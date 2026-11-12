@@ -31,20 +31,25 @@
             <p class="pl-2 pr-1 text-sm font-semibold" aria-hidden="true">{{ timeRemaining }}</p>
           </button>
 
+          <button class="h-8 px-3 ml-2 border border-white/20 hover:bg-white/10 rounded-full flex items-center text-sm" :disabled="downloadBusy || episode.downloading || isDownloaded" @click.stop="downloadClick">
+            <span class="material-symbols text-xl mr-1" aria-hidden="true">{{ isDownloaded ? 'download_done' : 'download' }}</span>
+            {{ isDownloaded ? 'Téléchargé' : downloadBusy || episode.downloading ? 'Téléchargement…' : 'Télécharger' }}
+          </button>
+
           <ui-tooltip v-if="libraryItemIdStreaming && !isStreamingFromDifferentLibrary" :text="isQueued ? $strings.MessageRemoveFromPlayerQueue : $strings.MessageAddToPlayerQueue" :class="isQueued ? 'text-success' : ''" direction="top">
             <ui-icon-btn :icon="isQueued ? 'playlist_add_check' : 'playlist_play'" :aria-label="isQueued ? $strings.LabelRemoveFromPlayerQueue : $strings.LabelAddToPlayerQueue" borderless @click="queueBtnClick" />
           </ui-tooltip>
 
-          <ui-tooltip :text="userIsFinished ? $strings.MessageMarkAsNotFinished : $strings.MessageMarkAsFinished" direction="top">
+          <ui-tooltip v-if="isDownloaded" :text="userIsFinished ? $strings.MessageMarkAsNotFinished : $strings.MessageMarkAsFinished" direction="top">
             <ui-read-icon-btn :disabled="isProcessingReadUpdate" :is-read="userIsFinished" borderless class="mx-1 mt-0.5" @click="toggleFinished" />
           </ui-tooltip>
 
-          <ui-tooltip :text="$strings.LabelYourPlaylists" direction="top">
+          <ui-tooltip v-if="isDownloaded" :text="$strings.LabelYourPlaylists" direction="top">
             <ui-icon-btn icon="playlist_add" :aria-label="$strings.LabelYourPlaylists" borderless @click="clickAddToPlaylist" />
           </ui-tooltip>
 
-          <ui-icon-btn v-if="userCanUpdate" icon="edit" borderless @click="clickEdit" />
-          <ui-icon-btn v-if="userCanDelete" icon="close" :aria-label="$strings.HeaderRemoveEpisode" borderless @click="removeClick" />
+          <ui-icon-btn v-if="userCanUpdate && isDownloaded" icon="edit" borderless @click="clickEdit" />
+          <ui-icon-btn v-if="userCanDelete && isDownloaded" icon="close" :aria-label="$strings.HeaderRemoveEpisode" borderless @click="removeClick" />
         </div>
       </div>
       <div v-if="isHovering || isSelected || isSelectionMode" class="hidden md:block w-12 min-w-12" />
@@ -64,6 +69,8 @@
 </template>
 
 <script>
+import { downloadPodcastEpisode } from '../../../helpers/podcastDownload'
+
 export default {
   props: {
     index: Number,
@@ -76,6 +83,8 @@ export default {
   },
   data() {
     return {
+      downloadBusy: false,
+      downloadComplete: false,
       isProcessingReadUpdate: false,
       processingRemove: false,
       isHovering: false,
@@ -84,6 +93,9 @@ export default {
     }
   },
   computed: {
+    isDownloaded() {
+      return this.downloadComplete || this.episode?.downloaded !== false
+    },
     store() {
       return this.$store || this.$nuxt.$store
     },
@@ -149,6 +161,19 @@ export default {
     }
   },
   methods: {
+    async downloadClick() {
+      if (this.downloadBusy || this.isDownloaded) return
+      this.downloadBusy = true
+      try {
+        const id = await downloadPodcastEpisode(this.axios, this.libraryItemId, this.episodeId, () => !this._isDestroyed)
+        if (id) this.downloadComplete = true
+      } catch (error) {
+        const toast = this.$toast || this.$nuxt.$toast
+        toast.error(error.response?.data?.error || error.message || 'Téléchargement impossible. Réessayez.')
+      } finally {
+        this.downloadBusy = false
+      }
+    },
     setSelectionMode(isSelectionMode) {
       this.isSelectionMode = isSelectionMode
       if (!this.isSelectionMode) this.isSelected = false

@@ -329,6 +329,7 @@ export default {
       this.showBookmarksModal = false
     },
     closePlayer() {
+      this._playRequest = (this._playRequest || 0) + 1
       this.playerHandler.closePlayer()
       this.$store.commit('setMediaPlaying', null)
     },
@@ -498,6 +499,8 @@ export default {
       })
     },
     async playLibraryItem(payload) {
+      const request = (this._playRequest || 0) + 1
+      this._playRequest = request
       const libraryItemId = payload.libraryItemId
       const episodeId = payload.episodeId || null
 
@@ -510,11 +513,12 @@ export default {
         return
       }
 
+      this.playerHandler.prepareGeneration++
       const libraryItem = await this.$axios.$get(`/api/items/${libraryItemId}?expanded=1`).catch((error) => {
         console.error('Failed to fetch full item', error)
         return null
       })
-      if (!libraryItem) return
+      if (!libraryItem || request !== this._playRequest) return
 
       this.$store.commit('setMediaPlaying', {
         libraryItem,

@@ -19,6 +19,7 @@ const RssFeedManager = require('../managers/RssFeedManager')
 const CacheManager = require('../managers/CacheManager')
 const CoverManager = require('../managers/CoverManager')
 const ShareManager = require('../managers/ShareManager')
+const PodcastCatalog = require('../managers/PodcastCatalog')
 
 /**
  * @typedef RequestUserObject
@@ -68,6 +69,7 @@ class LibraryItemController {
    * @param {Response} res
    */
   async findOne(req, res) {
+    if (req.libraryItem.isPodcast) await PodcastCatalog.refresh(req.libraryItem.media, req.query.refresh === '1')
     const includeEntities = (req.query.include || '').split(',')
     if (req.query.expanded == 1) {
       const item = req.libraryItem.toOldJSONExpanded()
@@ -457,19 +459,19 @@ class LibraryItemController {
    * @param {LibraryItemControllerRequest} req
    * @param {Response} res
    */
-  startEpisodePlaybackSession(req, res) {
+  async startEpisodePlaybackSession(req, res) {
     if (!req.libraryItem.isPodcast) {
       Logger.error(`[LibraryItemController] startEpisodePlaybackSession invalid media type ${req.libraryItem.id}`)
       return res.sendStatus(400)
     }
 
-    const episodeId = req.params.episodeId
-    if (!req.libraryItem.media.podcastEpisodes.some((ep) => ep.id === episodeId)) {
-      Logger.error(`[LibraryItemController] startPlaybackSession episode ${episodeId} not found for item ${req.libraryItem.id}`)
-      return res.sendStatus(404)
+    try {
+      const ready = await PodcastCatalog.ensureDownloaded(req.libraryItem, req.params.episodeId, this.podcastManager)
+      req.libraryItem = ready.item
+      return await this.playbackSessionManager.startSessionRequest(req, res, ready.episode.id)
+    } catch (error) {
+      return res.status(error.status || 502).json({ error: error.message })
     }
-
-    this.playbackSessionManager.startSessionRequest(req, res, episodeId)
   }
 
   /**

@@ -1,0 +1,16 @@
+name: audiobookshelf-freaky
+services:
+  audiobookshelf:
+    image: ghcr.io/freakstreet/audiobookshelf_freaky_mod-docker:v2.37.2-freaky.1
+    restart: unless-stopped
+    ports:
+      - "13378:80"
+    environment:
+      TZ: Europe/Paris
+    volumes:
+      - ${ABS_DATA:-/mnt/storage/appData/audiobookshelf-freaky}/config:/config
+      - ${ABS_DATA:-/mnt/storage/appData/audiobookshelf-freaky}/metadata:/metadata
+      - ${ABS_DATA:-/mnt/storage/appData/audiobookshelf-freaky}/audiobooks:/audiobooks
+      - ${ABS_DATA:-/mnt/storage/appData/audiobookshelf-freaky}/podcasts:/podcasts
+      # Compatibility with the library path used by the initial Mac instance.
+      - ${ABS_DATA:-/mnt/storage/appData/audiobookshelf-freaky}/podcasts:/app/podcasts

@@ -14,6 +14,7 @@ const htmlSanitizer = require('../utils/htmlSanitizer')
 
 const Scanner = require('../scanner/Scanner')
 const CoverManager = require('../managers/CoverManager')
+const PodcastCatalog = require('../managers/PodcastCatalog')
 
 /**
  * @typedef RequestUserObject
@@ -477,16 +478,30 @@ class PodcastController {
    * @param {Response} res
    */
   async getEpisode(req, res) {
-    const episodeId = req.params.episodeId
-
-    /** @type {import('../models/PodcastEpisode')} */
-    const episode = req.libraryItem.media.podcastEpisodes.find((ep) => ep.id === episodeId)
+    const { local } = await PodcastCatalog.find(req.libraryItem, req.params.episodeId)
+    const episode = req.libraryItem.toOldJSONExpanded().media.episodes.find((ep) => ep.id === (local?.id || req.params.episodeId))
     if (!episode) {
-      Logger.error(`[PodcastController] getEpisode episode ${episodeId} not found for item ${req.libraryItem.id}`)
       return res.sendStatus(404)
     }
 
-    res.json(episode.toOldJSON(req.libraryItem.id))
+    res.json(episode)
+  }
+
+  async listEpisodes(req, res) {
+    await PodcastCatalog.refresh(req.libraryItem.media, req.query.refresh === '1')
+    const media = req.libraryItem.toOldJSONExpanded().media
+    const search = String(req.query.q || '').toLocaleLowerCase()
+    const episodes = media.episodes.filter((ep) => !search || `${ep.title || ''} ${ep.subtitle || ''}`.toLocaleLowerCase().includes(search))
+    res.json({ episodes, total: episodes.length, catalogError: media.catalogError })
+  }
+
+  async downloadEpisode(req, res) {
+    try {
+      const state = await PodcastCatalog.requestDownload(req.libraryItem, req.params.episodeId, this.podcastManager)
+      res.status(state.downloaded ? 200 : 202).json(state)
+    } catch (error) {
+      res.status(error.status || 502).json({ error: error.message })
+    }
   }
 
   /**
@@ -573,7 +588,7 @@ class PodcastController {
     if (req.method == 'DELETE' && !req.user.canDelete) {
       Logger.warn(`[PodcastController] User "${req.user.username}" attempted to delete without permission`)
       return res.sendStatus(403)
-    } else if ((req.method == 'PATCH' || req.method == 'POST') && !req.user.canUpdate) {
+    } else if ((req.method == 'PATCH' || req.method == 'POST') && !req.user.canUpdate && !(req.method === 'POST' && req.route.path === '/podcasts/:id/episode/:episodeId/download')) {
       Logger.warn(`[PodcastController] User "${req.user.username}" attempted to update without permission`)
       return res.sendStatus(403)
     }

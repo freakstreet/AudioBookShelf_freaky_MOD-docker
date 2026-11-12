@@ -3,6 +3,7 @@ const { getTitlePrefixAtEnd, getTitleIgnorePrefix } = require('../utils')
 const Logger = require('../Logger')
 const libraryItemsPodcastFilters = require('../utils/queries/libraryItemsPodcastFilters')
 const htmlSanitizer = require('../utils/htmlSanitizer')
+const PodcastCatalog = require('../managers/PodcastCatalog')
 
 /**
  * @typedef PodcastExpandedProperties
@@ -442,7 +443,7 @@ class Podcast extends Model {
       metadata: this.oldMetadataToJSON(),
       coverPath: this.coverPath,
       tags: [...(this.tags || [])],
-      episodes: this.podcastEpisodes.map((episode) => episode.toOldJSON(libraryItemId)),
+      episodes: PodcastCatalog.merge(this, libraryItemId, this.podcastEpisodes.map((episode) => episode.toOldJSONExpanded(libraryItemId))),
       autoDownloadEpisodes: this.autoDownloadEpisodes,
       autoDownloadSchedule: this.autoDownloadSchedule,
       lastEpisodeCheck: this.lastEpisodeCheck?.valueOf() || null,
@@ -463,7 +464,7 @@ class Podcast extends Model {
       metadata: this.oldMetadataToJSONExpanded(),
       coverPath: this.coverPath,
       tags: [...(this.tags || [])],
-      numEpisodes: this.podcastEpisodes?.length || 0,
+      numEpisodes: this.podcastEpisodes ? PodcastCatalog.merge(this, '', this.podcastEpisodes.map((ep) => ({ id: ep.id, guid: ep.extraData?.guid, enclosure: { url: ep.enclosureURL } }))).length : Math.max(this.numEpisodes || 0, PodcastCatalog.cached(this)?.episodes?.length || 0),
       autoDownloadEpisodes: this.autoDownloadEpisodes,
       autoDownloadSchedule: this.autoDownloadSchedule,
       lastEpisodeCheck: this.lastEpisodeCheck?.valueOf() || null,
@@ -490,7 +491,8 @@ class Podcast extends Model {
     return {
       ...this.toOldJSONMinified(),
       libraryItemId,
-      episodes: this.podcastEpisodes.map((e) => e.toOldJSONExpanded(libraryItemId))
+      episodes: PodcastCatalog.merge(this, libraryItemId, this.podcastEpisodes.map((e) => e.toOldJSONExpanded(libraryItemId))),
+      catalogError: PodcastCatalog.cached(this)?.error || null
     }
   }
 }

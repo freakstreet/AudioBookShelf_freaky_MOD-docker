@@ -1,0 +1,29 @@
+# syntax=docker/dockerfile:1
+ARG ABS_BASE=ghcr.io/advplyr/audiobookshelf:2.37.2@sha256:b897c33f05972fb1bf484f7487bc878fa91ec8691335c1db6e2929c3a7658efa
+FROM --platform=$BUILDPLATFORM node:24-alpine AS server-build
+WORKDIR /build
+COPY package.json package-lock.json tsconfig.server.json index.js ./
+RUN --mount=type=cache,target=/root/.npm npm ci --include=dev --ignore-scripts
+COPY server ./server
+COPY test ./test
+RUN npm run build:server
+FROM server-build AS test
+COPY client/players/PlayerHandler.js ./client/players/PlayerHandler.js
+RUN npx mocha dist-server/test/managers/PodcastCatalog.test.js dist-server/test/managers/PodcastPlayer.test.js
+
+FROM --platform=$BUILDPLATFORM node:24-alpine AS client-build
+WORKDIR /build/client
+ENV CYPRESS_INSTALL_BINARY=0
+COPY client/package.json client/package-lock.json ./
+RUN --mount=type=cache,target=/root/.npm npm ci
+COPY client ./
+RUN npm run generate
+
+FROM ${ABS_BASE} AS runtime
+ARG MOD_VERSION=2.37.2-freaky.1
+LABEL org.opencontainers.image.source="https://github.com/freakstreet/AudioBookShelf_freaky_MOD-docker" \
+      org.opencontainers.image.version="${MOD_VERSION}" \
+      org.opencontainers.image.licenses="GPL-3.0" \
+      org.opencontainers.image.title="Audiobookshelf Freaky MOD"
+COPY --from=server-build /build/dist-server /app/dist-server
+COPY --from=client-build /build/client/dist /app/client/dist

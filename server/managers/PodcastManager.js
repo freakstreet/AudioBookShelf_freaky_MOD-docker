@@ -57,12 +57,21 @@ class PodcastManager {
    * @param {import('../utils/podcastUtils').RssPodcastEpisode[]} episodesToDownload
    * @param {boolean} isAutoDownload - If this download was triggered by auto download
    */
-  async downloadPodcastEpisodes(libraryItem, episodesToDownload, isAutoDownload) {
+  async downloadPodcastEpisodes(libraryItem, episodesToDownload, isAutoDownload, catalogEpisodeIds = {}) {
+    const downloads = []
     for (const ep of episodesToDownload) {
+      const existing = [this.currentDownload, ...this.downloadQueue].find((d) => d && d.libraryItemId === libraryItem.id && ((ep.guid && d.rssPodcastEpisode.guid === ep.guid) || d.rssPodcastEpisode.enclosure.url === ep.enclosure.url))
+      if (existing) {
+        downloads.push(existing)
+        continue
+      }
       const newPeDl = new PodcastEpisodeDownload()
       newPeDl.setData(ep, libraryItem, isAutoDownload, libraryItem.libraryId)
+      newPeDl.catalogEpisodeId = catalogEpisodeIds[ep.guid || ep.enclosure.url] || null
+      downloads.push(newPeDl)
       this.startPodcastEpisodeDownload(newPeDl)
     }
+    return downloads
   }
 
   /**
@@ -71,6 +80,26 @@ class PodcastManager {
    * @returns
    */
   async startPodcastEpisodeDownload(podcastEpisodeDownload) {
+    try {
+      await this.processPodcastEpisodeDownload(podcastEpisodeDownload)
+    } catch (error) {
+      Logger.error('[PodcastManager] Episode download interrupted', error.message)
+      podcastEpisodeDownload.setFinished(false)
+      SocketAuthority.emitter('episode_download_finished', podcastEpisodeDownload.toJSONForClient())
+      Watcher.removeIgnoreDir(podcastEpisodeDownload.libraryItem.path)
+      Watcher.ignoreFilePathsDownloading.delete(podcastEpisodeDownload.targetPath)
+      if (this.currentDownload === podcastEpisodeDownload) {
+        if (podcastEpisodeDownload.catalogTask) {
+          podcastEpisodeDownload.catalogTask.setFailed({ text: 'Failed', key: 'MessageTaskFailed' })
+          TaskManager.taskFinished(podcastEpisodeDownload.catalogTask)
+        }
+        this.currentDownload = null
+        if (this.downloadQueue.length) this.startPodcastEpisodeDownload(this.downloadQueue.shift())
+      }
+    }
+  }
+
+  async processPodcastEpisodeDownload(podcastEpisodeDownload) {
     if (this.currentDownload) {
       // Prevent downloading episodes from the same URL for the same library item.
       // Allow downloading for different library items in case of the same podcast existing in multiple libraries (e.g. different folders)
@@ -100,9 +129,13 @@ class PodcastManager {
       subs: [podcastEpisodeDownload.episodeTitle]
     }
     const task = TaskManager.createAndAddTask('download-podcast-episode', taskTitleString, taskDescriptionString, false, taskData)
+    podcastEpisodeDownload.catalogTask = task
 
     SocketAuthority.emitter('episode_download_started', podcastEpisodeDownload.toJSONForClient())
     this.currentDownload = podcastEpisodeDownload
+    // A queued request may hold an older item instance than the previous job.
+    this.currentDownload.libraryItem = await Database.libraryItemModel.getExpandedById(podcastEpisodeDownload.libraryItemId)
+    if (!this.currentDownload.libraryItem) throw new Error('Podcast no longer exists')
 
     // If this file already exists then append a uuid to the filename
     //  e.g. "/tagesschau 20 Uhr.mp3" becomes "/tagesschau 20 Uhr (ep_asdfasdf).mp3"
@@ -204,7 +237,7 @@ class PodcastManager {
       return false
     }
 
-    const podcastEpisode = await Database.podcastEpisodeModel.createFromRssPodcastEpisode(this.currentDownload.rssPodcastEpisode, libraryItem.media.id, audioFile)
+    const podcastEpisode = await Database.podcastEpisodeModel.createFromRssPodcastEpisode(this.currentDownload.rssPodcastEpisode, libraryItem.media.id, audioFile, this.currentDownload.catalogEpisodeId)
 
     libraryItem.libraryFiles.push(libraryFile.toJSON())
     // Re-calculating library item size because this wasnt being updated properly for podcasts in v2.20.0 and below
@@ -217,6 +250,7 @@ class PodcastManager {
     libraryItem.size = libraryItemSize
     libraryItem.changed('libraryFiles', true)
 
+    libraryItem.media.podcastEpisodes = libraryItem.media.podcastEpisodes.filter((ep) => ep.id !== podcastEpisode.id)
     libraryItem.media.podcastEpisodes.push(podcastEpisode)
 
     if (this.currentDownload.isAutoDownload) {

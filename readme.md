@@ -1,3 +1,7 @@
+# Audiobookshelf Freaky MOD
+
+Public fork linked to the original Audiobookshelf repository. Adds a complete RSS episode catalogue per podcast, explicit downloads and download-before-play. See [FREAKY_MOD.md](FREAKY_MOD.md) for behavior, API, Docker and TrueNAS deployment. Original project documentation follows.
+
 <br />
 <div align="center">
    <img alt="Audiobookshelf Banner" src="https://github.com/advplyr/audiobookshelf/raw/master/images/banner.svg" width="600">

@@ -1,6 +1,7 @@
 import LocalAudioPlayer from './LocalAudioPlayer'
 import CastPlayer from './CastPlayer'
 import AudioTrack from './AudioTrack'
+import { downloadPodcastEpisode } from '../helpers/podcastDownload'
 
 export default class PlayerHandler {
   constructor(ctx) {
@@ -23,6 +24,7 @@ export default class PlayerHandler {
     this.listeningTimeSinceSync = 0
 
     this.playInterval = null
+    this.prepareGeneration = 0
   }
 
   get isCasting() {
@@ -180,6 +182,10 @@ export default class PlayerHandler {
   }
 
   async prepare(forceTranscode = false) {
+    const generation = ++this.prepareGeneration
+    const isActive = () => generation === this.prepareGeneration && !!this.player
+    if (this.player) this.player.pause()
+    this.playerStateChange('LOADING')
     this.setSessionId(null) // Reset session
 
     const payload = {
@@ -193,11 +199,22 @@ export default class PlayerHandler {
       forceDirectPlay: this.isCasting // TODO: add transcode support for chromecast
     }
 
-    const path = this.episodeId ? `/api/items/${this.libraryItem.id}/play/${this.episodeId}` : `/api/items/${this.libraryItem.id}/play`
-    const session = await this.ctx.$axios.$post(path, payload).catch((error) => {
-      console.error('Failed to start stream', error)
-    })
-    this.prepareSession(session)
+    try {
+      if (this.episode && this.episode.downloaded === false) {
+        const id = await downloadPodcastEpisode(this.ctx.$axios, this.libraryItem.id, this.episodeId, isActive)
+        if (!isActive() || !id) return
+        this.episodeId = id
+      }
+      if (!isActive()) return
+      const path = this.episodeId ? `/api/items/${this.libraryItem.id}/play/${this.episodeId}` : `/api/items/${this.libraryItem.id}/play`
+      const session = await this.ctx.$axios.$post(path, payload)
+      if (!isActive()) return
+      this.prepareSession(session)
+    } catch (error) {
+      if (!isActive()) return
+      this.playerStateChange('IDLE')
+      this.ctx.$toast.error(error.response?.data?.error || error.message || 'Lecture impossible. Réessayez.')
+    }
   }
 
   prepareOpenSession(session, playbackRate) {
@@ -215,6 +232,13 @@ export default class PlayerHandler {
   }
 
   prepareSession(session) {
+    if (session.libraryItem) this.libraryItem = session.libraryItem
+    if (session.episodeId) this.episodeId = session.episodeId
+    this.ctx.$store.commit('setMediaPlaying', {
+      libraryItem: this.libraryItem,
+      episodeId: this.episodeId,
+      queueItems: this.ctx.$store.state.playerQueueItems
+    })
     this.failedProgressSyncs = 0
     this.startTime = this.startTimeOverride !== undefined ? this.startTimeOverride : session.currentTime
     this.setSessionId(session.id)
@@ -244,6 +268,7 @@ export default class PlayerHandler {
   }
 
   resetPlayer() {
+    this.prepareGeneration++
     if (this.player) {
       this.player.destroy()
     }
@@ -343,10 +368,19 @@ export default class PlayerHandler {
   }
 
   play() {
+    if (this.playerState === 'LOADING') {
+      this.playWhenReady = true
+      return
+    }
+    if (this.playerState === 'IDLE' && this.libraryItem && this.player) {
+      this.playWhenReady = true
+      return this.prepare()
+    }
     if (this.player) this.player.play()
   }
 
   pause() {
+    this.playWhenReady = false
     if (this.player) this.player.pause()
   }
 

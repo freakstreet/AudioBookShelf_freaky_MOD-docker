@@ -58,7 +58,7 @@ class PodcastEpisode extends Model {
    * @param {string} podcastId
    * @param {import('../objects/files/AudioFile')} audioFile
    */
-  static async createFromRssPodcastEpisode(rssPodcastEpisode, podcastId, audioFile) {
+  static async createFromRssPodcastEpisode(rssPodcastEpisode, podcastId, audioFile, catalogEpisodeId = null) {
     const podcastEpisode = {
       index: null,
       season: rssPodcastEpisode.season,
@@ -87,6 +87,16 @@ class PodcastEpisode extends Model {
       podcastEpisode.chapters = rssPodcastEpisode.chapters.map((ch) => ({ ...ch }))
     }
 
+    if (catalogEpisodeId) {
+      const existing = await this.findByPk(catalogEpisodeId)
+      if (existing) {
+        if (existing.podcastId !== podcastId) throw new Error('Episode belongs to another podcast')
+        existing.set(podcastEpisode)
+        await existing.save()
+        return existing
+      }
+      podcastEpisode.id = catalogEpisodeId
+    }
     return this.create(podcastEpisode)
   }
 

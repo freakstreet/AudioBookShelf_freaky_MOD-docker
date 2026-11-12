@@ -7,6 +7,10 @@
           <p v-if="episodesList.length === episodes.length">{{ episodes.length }}</p>
           <p v-else>{{ episodesList.length }} / {{ episodes.length }}</p>
         </div>
+        <label class="inline-flex items-center ml-4 gap-2 text-sm cursor-pointer">
+          <input v-model="downloadedOnly" type="checkbox" class="h-4 w-4 accent-green-500 cursor-pointer" @change="filterSortChanged" />
+          <span>Téléchargés uniquement</span>
+        </label>
       </div>
       <div class="grow hidden md:block" />
       <div class="flex items-center">
@@ -62,7 +66,8 @@ export default {
   data() {
     return {
       episodesCopy: [],
-      filterKey: 'incomplete',
+      filterKey: 'all',
+      downloadedOnly: false,
       sortKey: 'publishedAt',
       sortDesc: true,
       selectedEpisode: null,
@@ -167,6 +172,7 @@ export default {
     },
     episodesSorted() {
       return this.episodesCopy
+        .filter((ep) => !this.downloadedOnly || ep.downloaded === true)
         .filter((ep) => {
           if (this.filterKey === 'all') return true
           const episodeProgress = this.$store.getters['user/getUserMediaProgress'](this.libraryItem.id, ep.id)
@@ -556,6 +562,7 @@ export default {
     filterSortChanged() {
       // Save filterKey and sortKey to local storage
       localStorage.setItem('podcastEpisodesFilter', this.filterKey)
+      localStorage.setItem('podcastEpisodesDownloadedOnly', String(this.downloadedOnly))
       localStorage.setItem('podcastEpisodesSortBy', this.sortKey + (this.sortDesc ? '-desc' : ''))
 
       this.init()
@@ -593,7 +600,8 @@ export default {
     }
   },
   mounted() {
-    this.filterKey = localStorage.getItem('podcastEpisodesFilter') || 'incomplete'
+    this.filterKey = localStorage.getItem('podcastEpisodesFilter') || 'all'
+    this.downloadedOnly = localStorage.getItem('podcastEpisodesDownloadedOnly') === 'true'
     const sortBy = localStorage.getItem('podcastEpisodesSortBy') || 'publishedAt-desc'
     this.sortKey = sortBy.split('-')[0]
     this.sortDesc = sortBy.split('-')[1] === 'desc'
