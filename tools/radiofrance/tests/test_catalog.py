@@ -75,7 +75,7 @@ class CatalogTests(unittest.TestCase):
             store.put_episode(SHOW, EP, old)
             class Client:
                 requests = cache_hits = 0
-                def page(self, url): raise OSError('network failed')
+                def page(self, url, **kwargs): raise OSError('network failed')
             args = SimpleNamespace(output=root/'public', base_url='http://example.local', max_pages=None, max_episodes=None)
             with contextlib.redirect_stdout(io.StringIO()): code = c.build(Client(), store, [SHOW], args)
             self.assertEqual(code, 1)
@@ -83,6 +83,22 @@ class CatalogTests(unittest.TestCase):
             self.assertEqual(rss.findtext('./channel/item/guid'), 'stable')
             opml = ET.parse(root/'public'/'catalog.opml')
             self.assertTrue(opml.find('.//outline[@type="rss"]').get('xmlUrl').startswith('http://example.local/'))
+            store.db.close()
+
+    def test_refresh_index_revalidates_lists_without_invalidating_episode_cache(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory); store = c.Store(root/'state.sqlite')
+            calls = []
+            series = page([{'@type': 'RadioSeries', 'name': 'Exemple'}, {'@type': 'ItemList', 'itemListElement': [{'url': EP}]}])
+            class Client:
+                requests = cache_hits = 0
+                def page(self, url, ttl=21600):
+                    calls.append((url, ttl))
+                    return series if url == SHOW else page([episode_node()], url=EP)
+            args = SimpleNamespace(output=root/'public', base_url='http://example.local', max_pages=None, max_episodes=None, refresh_index=True)
+            with contextlib.redirect_stdout(io.StringIO()): code = c.build(Client(), store, [SHOW], args)
+            self.assertEqual(code, 0)
+            self.assertEqual(calls, [(SHOW, 0), (EP, 7 * 86400)])
             store.db.close()
 
     def test_explicit_unavailability_hides_episode_without_losing_other_records(self):

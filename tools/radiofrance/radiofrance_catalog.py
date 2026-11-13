@@ -145,7 +145,7 @@ class Page(HTMLParser):
         series = next(iter(self.of_type('RadioSeries') or self.of_type('PodcastSeries')), {})
         title = ' '.join(''.join(self.h1).split()) or series.get('name') or self.meta.get('og:title') or self.url
         return {'url': canonical(self.url), 'title': title, 'description': series.get('abstract') or series.get('description') or self.meta.get('description', ''),
-                'image': image_url(series.get('image')) or self.meta.get('og:image', ''), 'station': parts(self.url)[0]}
+                'image': image_url(series.get('image')) or self.meta.get('og:image', ''), 'station': parts(self.url)[0], 'sourceRss': self.rss}
 
 
 def image_url(value):
@@ -275,10 +275,10 @@ def audio_key(url):
     return unquote(urlsplit(url).path.rsplit('/', 1)[-1]).casefold()
 
 
-def rss_reference(client, url):
+def rss_reference(client, url, ttl=21600):
     if not url:
         return {}
-    root = ET.fromstring(client.get(url))
+    root = ET.fromstring(client.get(url, ttl=ttl))
     result = {}
     for item in root.findall('./channel/item'):
         enclosure = item.find('enclosure')
@@ -401,7 +401,7 @@ def build(client, store, urls, args):
             summary = {'url': url, 'pages': 0, 'found': 0, 'processed': 0, 'completed': False}
             report['shows'].append(summary)
             try:
-                first = client.page(url)
+                first = client.page(url, ttl=0 if getattr(args, 'refresh_index', False) else 21600)
                 if not (first.of_type('RadioSeries') or first.of_type('PodcastSeries')):
                     raise ValueError('La page ne décrit pas une émission ou une série de podcasts.')
                 show = first.metadata()
@@ -409,7 +409,7 @@ def build(client, store, urls, args):
                 old = store.episodes(url)
                 references = {}
                 try:
-                    references = rss_reference(client, first.rss)
+                    references = rss_reference(client, first.rss, ttl=0 if getattr(args, 'refresh_index', False) else 21600)
                 except RateLimited:
                     raise
                 except Exception as error:
@@ -422,7 +422,7 @@ def build(client, store, urls, args):
                     page_url = url + '?' + urlencode({'p': n})
                     print(f'{show["title"]} : page {n}/{last}', flush=True)
                     try:
-                        page = client.page(page_url)
+                        page = client.page(page_url, ttl=0 if getattr(args, 'refresh_index', False) else 21600)
                         urls_found.extend(page.episode_links())
                         summary['pages'] += 1
                     except RateLimited:
@@ -485,6 +485,7 @@ def main(argv=None):
     crawl.add_argument('--config-out', type=Path, default=Path('radiofrance-shows.json'))
     generate = commands.add_parser('build', help='Parcourir les émissions et régénérer les XML et OPML.')
     generate.add_argument('--config', type=Path)
+    generate.add_argument('--refresh-index', action='store_true', help='Revalider les listes et le RSS source en conservant le cache des épisodes.')
     generate.add_argument('--show', action='append', default=[])
     generate.add_argument('--output', type=Path, default=Path('radiofrance-public'))
     generate.add_argument('--base-url', default='http://localhost:13400')

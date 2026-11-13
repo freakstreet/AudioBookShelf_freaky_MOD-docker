@@ -367,7 +367,10 @@ module.exports.getPodcastFeed = (feedUrl, excludeEpisodeMetadata = false) => {
     userAgent = 'audiobookshelf (+https://audiobookshelf.org; like iTMS) - CBC'
   }
 
-  return axios({
+  const radioFrance = require('../managers/RadioFranceManager')
+  const ownedXml = radioFrance.ownedFeed(feedUrl)
+  if (ownedXml === null && radioFrance.ownedName(feedUrl)) return Promise.resolve(null)
+  const request = ownedXml !== null ? Promise.resolve({ data: Buffer.from(ownedXml), headers: {} }) : axios({
     url: feedUrl,
     method: 'GET',
     timeout: global.PodcastDownloadTimeout,
@@ -380,7 +383,7 @@ module.exports.getPodcastFeed = (feedUrl, excludeEpisodeMetadata = false) => {
     httpAgent: global.DisableSsrfRequestFilter?.(feedUrl) ? null : ssrfFilter(feedUrl),
     httpsAgent: global.DisableSsrfRequestFilter?.(feedUrl) ? null : ssrfFilter(feedUrl)
   })
-    .then(async (data) => {
+  return request.then(async (data) => {
       // Adding support for ios-8859-1 encoded RSS feeds.
       //  See: https://github.com/advplyr/audiobookshelf/issues/1489
       const contentType = data.headers?.['content-type'] || '' // e.g. text/xml; charset=iso-8859-1

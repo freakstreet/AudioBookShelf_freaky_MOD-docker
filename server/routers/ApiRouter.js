@@ -24,6 +24,7 @@ const FileSystemController = require('../controllers/FileSystemController')
 const AuthorController = require('../controllers/AuthorController')
 const SessionController = require('../controllers/SessionController')
 const PodcastController = require('../controllers/PodcastController')
+const RadioFranceController = require('../controllers/RadioFranceController')
 const NotificationController = require('../controllers/NotificationController')
 const EmailController = require('../controllers/EmailController')
 const SearchController = require('../controllers/SearchController')
@@ -95,6 +96,10 @@ class ApiRouter {
     this.router.post('/libraries/:id/remove-metadata', LibraryController.middleware.bind(this), LibraryController.removeAllMetadataFiles.bind(this))
     this.router.get('/libraries/:id/podcast-titles', LibraryController.middleware.bind(this), LibraryController.getPodcastTitles.bind(this))
     this.router.get('/libraries/:id/download', LibraryController.middleware.bind(this), LibraryController.downloadMultiple.bind(this))
+
+    this.router.get('/libraries/:id/radiofrance', LibraryController.middleware.bind(this), RadioFranceController.middleware, RadioFranceController.view)
+    this.router.post('/libraries/:id/radiofrance/:action', LibraryController.middleware.bind(this), RadioFranceController.middleware, RadioFranceController.action.bind(this))
+    this.router.get('/radiofrance/feeds/:filename', RadioFranceController.middleware, RadioFranceController.feed)
 
     //
     // Item Routes

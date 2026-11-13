@@ -83,6 +83,7 @@ class Server {
     global.ConfigPath = fileUtils.filePathToPOSIX(Path.normalize(CONFIG_PATH))
     global.MetadataPath = fileUtils.filePathToPOSIX(Path.normalize(METADATA_PATH))
     global.RouterBasePath = normalizeBasePath(ROUTER_BASE_PATH)
+    global.RadioFranceBaseURL = `http://127.0.0.1:${PORT}${global.RouterBasePath}/api/radiofrance`
     global.XAccel = process.env.USE_X_ACCEL
     global.AllowCors = process.env.ALLOW_CORS === '1'
 
@@ -427,6 +428,7 @@ class Server {
         '/library/:library/podcast/search',
         '/library/:library/podcast/latest',
         '/library/:library/podcast/download-queue',
+        '/library/:library/podcast/radiofrance',
         '/config/users/:id',
         '/config/users/:id/sessions',
         '/config/item-metadata-utils/:id',

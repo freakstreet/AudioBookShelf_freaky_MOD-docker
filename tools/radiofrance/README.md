@@ -83,3 +83,9 @@ Validation :
 ```sh
 python3 -m unittest discover -s tools/radiofrance/tests -v
 ```
+
+## Panneau intégré à Audiobookshelf
+
+Le menu **Radio France** des bibliothèques de podcasts pilote désormais ce script directement dans le Docker Freaky MOD. L’OPML est chargé automatiquement ; aucun serveur de fichiers ni import manuel n’est nécessaire. Les fichiers et le cache sont persistés dans `/metadata/radiofrance/`. Voir `FREAKY_MOD.md` pour le parcours complet.
+
+L’option `build --refresh-index` revalide les listes d’épisodes et leur RSS de référence, tout en conservant le cache des pages individuelles. Elle est utilisée par le bouton d’actualisation du panneau. `--refresh` reste disponible pour revalider toutes les pages.

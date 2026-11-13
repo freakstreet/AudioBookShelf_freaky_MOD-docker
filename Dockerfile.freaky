@@ -9,7 +9,7 @@ COPY test ./test
 RUN npm run build:server
 FROM server-build AS test
 COPY client/players/PlayerHandler.js ./client/players/PlayerHandler.js
-RUN npx mocha dist-server/test/managers/PodcastCatalog.test.js dist-server/test/managers/PodcastPlayer.test.js dist-server/test/managers/PodcastArtwork.test.js
+RUN npx mocha dist-server/test/managers/PodcastCatalog.test.js dist-server/test/managers/PodcastPlayer.test.js dist-server/test/managers/PodcastArtwork.test.js dist-server/test/managers/RadioFranceManager.test.js
 
 FROM ${ABS_BASE} AS artwork-test
 COPY --from=server-build /build/dist-server /app/dist-server
@@ -25,7 +25,9 @@ COPY client ./
 RUN npm run generate
 
 FROM ${ABS_BASE} AS runtime
-ARG MOD_VERSION=2.37.2-freaky.2
+RUN apk add --no-cache python3
+COPY tools/radiofrance/radiofrance_catalog.py /app/dist-server/tools/radiofrance/radiofrance_catalog.py
+ARG MOD_VERSION=2.37.2-freaky.3
 LABEL org.opencontainers.image.source="https://github.com/freakstreet/AudioBookShelf_freaky_MOD-docker" \
       org.opencontainers.image.version="${MOD_VERSION}" \
       org.opencontainers.image.licenses="GPL-3.0" \

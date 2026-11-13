@@ -84,6 +84,12 @@
         <div v-show="isPodcastSearchPage" class="h-full w-0.5 bg-yellow-400 absolute top-0 left-0" />
       </nuxt-link>
 
+      <nuxt-link v-if="isPodcastLibrary && userIsAdminOrUp" :to="`/library/${currentLibraryId}/podcast/radiofrance`" class="w-full h-20 flex flex-col items-center justify-center text-white/80 border-b border-primary/70 hover:bg-primary cursor-pointer relative" :class="$route.name === 'library-library-podcast-radiofrance' ? 'bg-primary/80' : 'bg-bg/60'">
+        <span class="material-symbols text-2xl">radio</span>
+        <p class="pt-1 text-center leading-4" style="font-size: 0.8rem">Radio France</p>
+        <div v-show="$route.name === 'library-library-podcast-radiofrance'" class="h-full w-0.5 bg-yellow-400 absolute top-0 left-0" />
+      </nuxt-link>
+
       <nuxt-link v-if="isPodcastLibrary && userIsAdminOrUp" :to="`/library/${currentLibraryId}/podcast/download-queue`" class="w-full h-20 flex flex-col items-center justify-center text-white/80 border-b border-primary/70 hover:bg-primary cursor-pointer relative" :class="isPodcastDownloadQueuePage ? 'bg-primary/80' : 'bg-bg/60'">
         <span class="material-symbols text-2xl">&#xf090;</span>
 
