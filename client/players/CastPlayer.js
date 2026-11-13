@@ -78,8 +78,8 @@ export default class CastPlayer extends EventEmitter {
 
     this.currentTime = startTime
 
-    var coverImg = this.ctx.$store.getters['globals/getLibraryItemCoverSrc'](libraryItem)
-    if (process.env.NODE_ENV === 'development') {
+    var coverImg = this.ctx.$store.getters['globals/getPodcastEpisodeCoverSrc'](libraryItem, this.ctx.streamEpisode)
+    if (process.env.NODE_ENV === 'development' || /^https?:\/\//i.test(coverImg)) {
       this.coverUrl = coverImg
     } else {
       this.coverUrl = `${window.location.origin}${coverImg}`

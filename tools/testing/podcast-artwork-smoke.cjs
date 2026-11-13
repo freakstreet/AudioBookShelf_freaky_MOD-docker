@@ -1,0 +1,37 @@
+// Real FFmpeg regression check, executed in the Docker artwork-test stage.
+const assert = require('assert/strict')
+const fs = require('fs')
+const os = require('os')
+const path = require('path')
+const crypto = require('crypto')
+const { execFileSync } = require('child_process')
+const artwork = require('/app/dist-server/server/utils/podcastArtwork')
+const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'podcast-artwork-'))
+global.MetadataPath = directory
+const ffmpeg = (...args) => execFileSync('ffmpeg', ['-v', 'error', ...args])
+const info = (file) => JSON.parse(execFileSync('ffprobe', ['-v', 'error', '-show_streams', '-show_format', '-of', 'json', file]))
+const audioHash = (file) => ffmpeg('-i', file, '-map', '0:a', '-c', 'copy', '-f', 'hash', '-hash', 'SHA256', '-').toString().trim()
+const fileHash = (file) => crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex')
+
+;(async () => {
+  const image = path.join(directory, 'cover.jpg')
+  ffmpeg('-f', 'lavfi', '-i', 'color=c=orange:s=320x320', '-frames:v', '1', image)
+  for (const ext of ['mp3', 'm4a']) {
+    const file = path.join(directory, `episode.${ext}`)
+    ffmpeg('-f', 'lavfi', '-i', 'sine=frequency=440:duration=3', '-metadata', 'title=An episode title', file)
+    const before = audioHash(file)
+    const beforeDuration = Number(info(file).format.duration)
+    assert.equal(await artwork.embed(file, image), true)
+    const after = info(file)
+    assert.equal(audioHash(file), before, `${ext}: audio packets must remain identical`)
+    assert(Math.abs(Number(after.format.duration) - beforeDuration) < 0.1, `${ext}: full duration retained`)
+    assert(after.streams.some((s) => s.disposition.attached_pic), `${ext}: embedded picture is missing`)
+    assert.equal(after.format.tags.title, 'An episode title')
+    const bad = path.join(directory, 'invalid.jpg')
+    fs.writeFileSync(bad, 'not an image')
+    const intact = fileHash(file)
+    await assert.rejects(artwork.embed(file, bad))
+    assert.equal(fileHash(file), intact, `${ext}: failed artwork must not touch the original`)
+    console.log(`${ext}: embedded picture, complete duration, identical audio packets, metadata retained; original survives invalid artwork`)
+  }
+})().catch((error) => { console.error(error); process.exitCode = 1 }).finally(() => fs.rmSync(directory, { recursive: true, force: true }))

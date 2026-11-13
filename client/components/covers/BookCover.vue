@@ -5,7 +5,7 @@
         <div class="absolute cover-bg" ref="coverBg" />
       </div>
 
-      <img v-if="libraryItem" ref="cover" :src="fullCoverUrl" loading="lazy" draggable="false" @error="imageError" @load="imageLoaded" class="w-full h-full absolute top-0 left-0 z-10 duration-300 transition-opacity" :style="{ opacity: imageReady ? '1' : '0' }" :class="showCoverBg ? 'object-contain' : 'object-fill'" @click="clickCover" />
+      <img v-if="libraryItem" ref="cover" :src="fullCoverUrl" loading="lazy" draggable="false" referrerpolicy="no-referrer" @error="imageError" @load="imageLoaded" class="w-full h-full absolute top-0 left-0 z-10 duration-300 transition-opacity" :style="{ opacity: imageReady ? '1' : '0' }" :class="showCoverBg ? 'object-contain' : 'object-fill'" @click="clickCover" />
 
       <div v-show="loading && libraryItem" class="absolute top-0 left-0 h-full w-full flex items-center justify-center">
         <p class="text-center" :style="{ fontSize: 0.75 * sizeMultiplier + 'rem' }">{{ title }}</p>
@@ -36,6 +36,7 @@
 <script>
 export default {
   props: {
+    episode: { type: Object, default: null },
     libraryItem: {
       type: Object,
       default: () => {}
@@ -51,6 +52,7 @@ export default {
     return {
       loading: true,
       imageFailed: false,
+      episodeImageFailed: false,
       showCoverBg: false,
       imageReady: false
     }
@@ -58,6 +60,9 @@ export default {
   watch: {
     cover() {
       this.imageFailed = false
+      this.episodeImageFailed = false
+      this.imageReady = false
+      this.loading = true
     }
   },
   computed: {
@@ -102,18 +107,22 @@ export default {
     fullCoverUrl() {
       if (!this.libraryItem) return null
       const store = this.$store || this.$nuxt.$store
+      if (this.episode && !this.episodeImageFailed) return store.getters['globals/getPodcastEpisodeCoverSrc'](this.libraryItem, this.episode, this.placeholderUrl)
       return store.getters['globals/getLibraryItemCoverSrc'](this.libraryItem, this.placeholderUrl)
     },
     rawCoverUrl() {
       if (!this.libraryItem) return null
       const store = this.$store || this.$nuxt.$store
+      if (this.episode && !this.episodeImageFailed) return store.getters['globals/getPodcastEpisodeCoverSrc'](this.libraryItem, this.episode, this.placeholderUrl, true)
       return store.getters['globals/getLibraryItemCoverSrc'](this.libraryItem, this.placeholderUrl, true)
     },
     cover() {
+      if (this.episode?.hasCover) return `episode:${this.episode.id}:${this.episode.updatedAt}`
+      if (this.episode?.imageUrl) return this.episode.imageUrl
       return this.media.coverPath || this.placeholderUrl
     },
     hasCover() {
-      return !!this.media.coverPath
+      return !!this.media.coverPath || (!this.episodeImageFailed && !!(this.episode?.imageUrl || this.episode?.hasCover))
     },
     sizeMultiplier() {
       var baseSize = this.squareAspectRatio ? 192 : 120
@@ -167,6 +176,12 @@ export default {
       }
     },
     imageError(err) {
+      if (this.episode && !this.episodeImageFailed && (this.episode.imageUrl || this.episode.hasCover)) {
+        this.episodeImageFailed = true
+        this.loading = true
+        this.imageReady = false
+        return
+      }
       this.loading = false
       console.error('ImgError', err)
       this.imageFailed = true

@@ -412,6 +412,15 @@ class LibraryItemController {
       return res.sendStatus(400)
     }
 
+    // Episode artwork uses the existing cover route and its public-image
+    // policy. Never accept a filesystem path from the request.
+    if (typeof req.query.episode === 'string') {
+      const item = await Database.libraryItemModel.getExpandedById(libraryItemId)
+      const episode = item?.isPodcast && item.media.podcastEpisodes.find((ep) => ep.id === req.query.episode)
+      const path = episode && require('../utils/podcastArtwork').safeArtworkPath(episode.extraData?.imagePath)
+      if (path && await fs.pathExists(path)) return res.type('jpeg').sendFile(path)
+    }
+
     if (raw) {
       const coverPath = await Database.libraryItemModel.getCoverPath(libraryItemId)
       if (!coverPath || !(await fs.pathExists(coverPath))) {

@@ -1,7 +1,8 @@
 <template>
   <div :id="`lazy-episode-${index}`" class="w-full h-full cursor-pointer" @mouseover="mouseover" @mouseleave="mouseleave">
     <div class="flex" @click="clickedEpisode">
-      <div class="grow">
+      <covers-book-cover v-if="libraryItem" :library-item="libraryItem" :episode="episode" :width="64" :book-cover-aspect-ratio="1" class="mr-3 mt-1" />
+      <div class="grow min-w-0">
         <div dir="auto" class="flex items-center">
           <span class="text-sm font-semibold">{{ episodeTitle }}</span>
           <widgets-podcast-type-indicator :type="episodeType" />
@@ -73,6 +74,7 @@ import { downloadPodcastEpisode } from '../../../helpers/podcastDownload'
 
 export default {
   props: {
+    libraryItem: Object,
     index: Number,
     libraryItemId: String,
     episode: {

@@ -4,6 +4,7 @@ const Logger = require('../Logger')
 const { xmlToJSON, timestampToSeconds } = require('./index')
 const htmlSanitizer = require('../utils/htmlSanitizer')
 const Fuse = require('../libs/fusejs')
+const { imageUrl } = require('./podcastArtwork')
 
 /**
  * @typedef RssPodcastChapter
@@ -30,6 +31,7 @@ const Fuse = require('../libs/fusejs')
  * @property {number} publishedAt - Unix timestamp
  * @property {{ url: string, type?: string, length?: string }} enclosure
  * @property {string} guid
+ * @property {string|null} imageUrl
  * @property {string} chaptersUrl
  * @property {string} chaptersType
  * @property {RssPodcastChapter[]} chapters
@@ -164,7 +166,8 @@ function extractEpisodeData(item) {
   }
 
   const episode = {
-    enclosure: enclosure
+    enclosure: enclosure,
+    imageUrl: imageUrl(extractImage(item) || item['media:thumbnail']?.[0]?.['$']?.url)
   }
 
   episode.enclosure.url = episode.enclosure.url.trim()
@@ -284,6 +287,7 @@ function cleanEpisodeData(data) {
     publishedAt,
     enclosure: data.enclosure,
     guid: data.guid || null,
+    imageUrl: imageUrl(data.imageUrl),
     chaptersUrl: data.chaptersUrl || null,
     chaptersType: data.chaptersType || null,
     chapters: data.chapters || []

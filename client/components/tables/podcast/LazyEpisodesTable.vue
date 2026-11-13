@@ -337,6 +337,8 @@ export default {
         subtitle: this.mediaMetadata.title,
         caption: episode.publishedAt ? this.$getString('LabelPublishedDate', [this.$formatDate(episode.publishedAt, this.dateFormat)]) : this.$strings.LabelUnknownPublishDate,
         duration: episode.audioFile.duration || null,
+        episodeImageUrl: episode.imageUrl || null,
+        episodeHasCover: !!episode.hasCover,
         coverPath: this.media.coverPath || null
       }
       this.$store.commit('addItemToQueue', queueItem)
@@ -414,6 +416,8 @@ export default {
             subtitle: this.mediaMetadata.title,
             caption: _episode.publishedAt ? this.$getString('LabelPublishedDate', [this.$formatDate(_episode.publishedAt, this.dateFormat)]) : this.$strings.LabelUnknownPublishDate,
             duration: _episode.audioFile.duration || null,
+            episodeImageUrl: _episode.imageUrl || null,
+            episodeHasCover: !!_episode.hasCover,
             coverPath: this.media.coverPath || null
           })
         }
@@ -479,6 +483,7 @@ export default {
           propsData: {
             index,
             libraryItemId: this.libraryItem.id,
+            libraryItem: this.libraryItem,
             episode: this.episodesList[index],
             sortKey: this.sortKey
           },

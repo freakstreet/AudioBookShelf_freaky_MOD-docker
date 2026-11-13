@@ -1,6 +1,6 @@
 # Audiobookshelf Freaky MOD
 
-Public fork linked to the original Audiobookshelf repository. Adds a complete RSS episode catalogue per podcast, explicit downloads and download-before-play. See [FREAKY_MOD.md](FREAKY_MOD.md) for behavior, API, Docker and TrueNAS deployment. Original project documentation follows.
+Public fork linked to the original Audiobookshelf repository. Adds a complete RSS episode catalogue per podcast, downloads on play and individual episode images embedded in MP3/M4A downloads. Includes a [Radio France Web-to-RSS/OPML generator](tools/radiofrance/README.md). See [FREAKY_MOD.md](FREAKY_MOD.md) for behavior, API, Docker and TrueNAS deployment. Original project documentation follows.
 
 <br />
 <div align="center">

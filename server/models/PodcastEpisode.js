@@ -58,7 +58,7 @@ class PodcastEpisode extends Model {
    * @param {string} podcastId
    * @param {import('../objects/files/AudioFile')} audioFile
    */
-  static async createFromRssPodcastEpisode(rssPodcastEpisode, podcastId, audioFile, catalogEpisodeId = null) {
+  static async createFromRssPodcastEpisode(rssPodcastEpisode, podcastId, audioFile, catalogEpisodeId = null, artwork = null) {
     const podcastEpisode = {
       index: null,
       season: rssPodcastEpisode.season,
@@ -80,6 +80,8 @@ class PodcastEpisode extends Model {
     if (rssPodcastEpisode.guid) {
       podcastEpisode.extraData.guid = rssPodcastEpisode.guid
     }
+    podcastEpisode.extraData.imageUrl = require('../utils/podcastArtwork').imageUrl(rssPodcastEpisode.imageUrl)
+    if (artwork) Object.assign(podcastEpisode.extraData, artwork)
 
     if (audioFile.chapters?.length) {
       podcastEpisode.chapters = audioFile.chapters.map((ch) => ({ ...ch }))
@@ -228,6 +230,10 @@ class PodcastEpisode extends Model {
       description: this.description,
       enclosure,
       guid: this.extraData?.guid || null,
+      imageUrl: this.extraData?.imageUrl || null,
+      hasCover: !!this.extraData?.imagePath,
+      artworkEmbedded: !!this.extraData?.artworkEmbedded,
+      artworkSource: this.extraData?.artworkSource || null,
       pubDate: this.pubDate,
       chapters: structuredClone(this.chapters),
       audioFile: structuredClone(this.audioFile),

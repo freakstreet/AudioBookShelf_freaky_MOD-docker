@@ -1,6 +1,6 @@
 <template>
   <div v-if="item" class="w-full flex items-center px-4 py-2" :class="wrapperClass" @mouseover="mouseover" @mouseleave="mouseleave">
-    <covers-preview-cover :src="coverUrl" :width="48" :book-cover-aspect-ratio="bookCoverAspectRatio" :show-resolution="false" />
+    <covers-book-cover :library-item="coverItem" :episode="coverEpisode" :width="48" :book-cover-aspect-ratio="bookCoverAspectRatio" />
     <div class="grow px-2 py-1 queue-item-row-content truncate">
       <p class="text-gray-200 text-sm truncate">{{ title }}</p>
       <p class="text-gray-300 text-sm">{{ subtitle }}</p>
@@ -36,6 +36,12 @@ export default {
     }
   },
   computed: {
+    coverItem() {
+      return { id: this.libraryItemId, media: { coverPath: this.coverPath, metadata: { title: this.subtitle } } }
+    },
+    coverEpisode() {
+      return { id: this.episodeId, imageUrl: this.item.episodeImageUrl, hasCover: this.item.episodeHasCover }
+    },
     title() {
       return this.item.title || ''
     },

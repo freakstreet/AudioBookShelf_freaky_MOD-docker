@@ -13,6 +13,7 @@ const opmlParser = require('../utils/parsers/parseOPML')
 const opmlGenerator = require('../utils/generators/opmlGenerator')
 const prober = require('../utils/prober')
 const ffmpegHelpers = require('../utils/ffmpegHelpers')
+const PodcastArtwork = require('../utils/podcastArtwork')
 
 const TaskManager = require('./TaskManager')
 const CoverManager = require('../managers/CoverManager')
@@ -223,6 +224,7 @@ class PodcastManager {
    * @returns {Promise<boolean>} - Returns true if added
    */
   async scanAddPodcastEpisodeAudioFile() {
+    this.currentDownload.artwork = await PodcastArtwork.prepareAndEmbed(this.currentDownload)
     const libraryFile = new LibraryFile()
     await libraryFile.setDataFromPath(this.currentDownload.targetPath, this.currentDownload.targetRelPath)
 
@@ -237,7 +239,7 @@ class PodcastManager {
       return false
     }
 
-    const podcastEpisode = await Database.podcastEpisodeModel.createFromRssPodcastEpisode(this.currentDownload.rssPodcastEpisode, libraryItem.media.id, audioFile, this.currentDownload.catalogEpisodeId)
+    const podcastEpisode = await Database.podcastEpisodeModel.createFromRssPodcastEpisode(this.currentDownload.rssPodcastEpisode, libraryItem.media.id, audioFile, this.currentDownload.catalogEpisodeId, this.currentDownload.artwork)
 
     libraryItem.libraryFiles.push(libraryFile.toJSON())
     // Re-calculating library item size because this wasnt being updated properly for podcasts in v2.20.0 and below

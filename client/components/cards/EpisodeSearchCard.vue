@@ -1,6 +1,6 @@
 <template>
   <div class="flex items-center h-full px-1 overflow-hidden">
-    <covers-book-cover :library-item="libraryItem" :width="coverWidth" :book-cover-aspect-ratio="bookCoverAspectRatio" />
+    <covers-book-cover :library-item="libraryItem" :episode="episode" :width="coverWidth" :book-cover-aspect-ratio="bookCoverAspectRatio" />
     <div class="grow px-2 episodeSearchCardContent">
       <p class="truncate text-sm">{{ episodeTitle }}</p>
       <p class="text-xs text-gray-200 truncate">{{ podcastTitle }}</p>

@@ -93,7 +93,10 @@ class PodcastCatalog {
   }
 
   merge(media, itemId, locals) {
-    const result = locals.map((ep) => ({ ...ep, downloaded: !!ep.audioFile?.metadata?.path, ...this.jobState(itemId, ep.id) }))
+    const cached = this.cached(media)?.episodes || []
+    const result = locals.map((ep) => ({ ...ep,
+      imageUrl: ep.imageUrl || cached.find((rss) => this.matches(ep, rss))?.imageUrl || null,
+      downloaded: !!ep.audioFile?.metadata?.path, ...this.jobState(itemId, ep.id) }))
     const ids = new Set(result.map((ep) => ep.id))
     const remotes = []
     for (const ep of this.cached(media)?.episodes || []) {

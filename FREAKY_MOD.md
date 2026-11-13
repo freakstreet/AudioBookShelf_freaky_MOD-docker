@@ -12,12 +12,20 @@ Each podcast retains its own page. Its episode list combines all audio episodes 
 - Concurrent requests for one episode share a download. Failed/cancelled downloads can be retried.
 - Downloaded episodes retain the existing editing, removal and playlist actions.
 - RSS catalogues refresh on access after five minutes and are cached under `/metadata/freaky-podcast-catalog`. A temporary feed failure retains the previous catalogue; local audio remains usable.
+- Per-episode `itunes:image`/media thumbnails are retained independently from the series cover. They appear in episode rows, detail/search/queue views, the Web player and media-session artwork. Downloaded artwork is cached locally and served through the existing item cover route with `?episode=<id>`; the series image is the fallback.
+- New MP3/M4A downloads embed the episode image (or series cover if unavailable) into the file itself using audio stream copy. The implementation checks the resulting audio codec, sample rate, channels, duration and attached-picture flag before atomic replacement. An image failure keeps the original audio usable; existing downloads are not modified automatically.
+
+## Radio France Web catalogue generator
+
+[`tools/radiofrance/README.md`](tools/radiofrance/README.md) documents the standalone Python script that walks public Radio France pages and pagination, then writes one RSS XML per show plus OPML. It preserves series/episode illustrations, stable IDs where possible, caches its progress separately from public files, and can serve the generated files read-only. It does not download audio or require Radio France API credentials.
 
 The catalogue cannot recover episodes absent from the source RSS unless their files are already local. It does not bypass subscriptions, protected media or publisher restrictions. Metadata listing alone does not download audio. Explicit download and playback require access to the podcast's library; the existing RSS/download URL protections remain in place.
 
 ## API
 
 Authenticated API clients receive the combined episode list from `GET /api/items/:id` (also with `?expanded=1`) in `media.episodes`. Availability is exposed as `downloaded`, `downloading`, `downloadError`; remote episodes have duration metadata and no local audio track until downloaded.
+
+Artwork fields are `imageUrl`, `hasCover`, `artworkEmbedded` and `artworkSource` (`episode`, `series`, or null). `artworkEmbedded` describes the downloaded file, not merely whether a remote cover URL exists. Embedded art is implemented for MP3/M4A (also compatible MP4 containers); other audio formats retain normal playback with UI artwork where available.
 
 - `GET /api/podcasts/:id/episodes?q=search&refresh=1`: full list, optional title/subtitle search and forced RSS refresh; `{ episodes, total, catalogError }`.
 - `GET /api/podcasts/:id/episode/:episodeId`: one combined episode and download status.
@@ -28,7 +36,7 @@ Local ORM audio rows remain distinct from RSS catalogue metadata, so scanning an
 
 ## Docker / TrueNAS SCALE
 
-Image: `ghcr.io/freakstreet/audiobookshelf_freaky_mod-docker:v2.37.2-freaky.1` (Linux amd64, suitable for x86 TrueNAS).
+Image: `ghcr.io/freakstreet/audiobookshelf_freaky_mod-docker:v2.37.2-freaky.2` (Linux amd64, suitable for x86 TrueNAS).
 
 Import [`docker/freaky/compose.truenas.yaml`](docker/freaky/compose.truenas.yaml) in TrueNAS custom app YAML. Set `ABS_DATA` or replace its default `/mnt/storage/appData/audiobookshelf-freaky` with your dataset path. Ensure the dataset directories are writable by the container. Open port **13378** on the TrueNAS LAN address. Persist and back up **config, metadata and media** together. New libraries should use `/podcasts` and `/audiobooks`.
 
@@ -38,7 +46,8 @@ The runtime reuses the pinned official v2.37.2 image for native libraries/FFmpeg
 
 ```sh
 docker build -f Dockerfile.freaky --target test -t abs-freaky-tests .
-docker build -f Dockerfile.freaky -t audiobookshelf-freaky:2.37.2-freaky.1 .
+docker build -f Dockerfile.freaky --target artwork-test -t abs-artwork-tests .
+docker build -f Dockerfile.freaky -t audiobookshelf-freaky:2.37.2-freaky.2 .
 ```
 
 The fork's workflow builds/tests each main push and publishes tagged releases to GHCR. Upstream-specific workflows are retained in `.github/upstream-workflows` without running against this fork.

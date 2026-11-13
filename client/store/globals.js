@@ -84,6 +84,15 @@ export const state = () => ({
 })
 
 export const getters = {
+  getPodcastEpisodeCoverSrc:
+    (state, getters, rootState) =>
+    (libraryItem, episode, placeholder = null, raw = false) => {
+      if (episode?.hasCover && episode.id && libraryItem?.id) {
+        return `${rootState.routerBasePath}/api/items/${libraryItem.id}/cover?episode=${encodeURIComponent(episode.id)}${raw ? '&raw=1' : ''}&ts=${episode.updatedAt || libraryItem.updatedAt || 0}`
+      }
+      if (typeof episode?.imageUrl === 'string' && /^https?:\/\//i.test(episode.imageUrl)) return episode.imageUrl
+      return getters.getLibraryItemCoverSrc(libraryItem, placeholder, raw)
+    },
   getLibraryItemCoverSrc:
     (state, getters, rootState, rootGetters) =>
     (libraryItem, placeholder = null, raw = false) => {
