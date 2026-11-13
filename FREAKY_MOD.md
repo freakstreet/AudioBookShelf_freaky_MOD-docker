@@ -56,7 +56,7 @@ Image: `ghcr.io/freakstreet/audiobookshelf_freaky_mod-docker:v2.37.2-freaky.3` (
 
 Import [`docker/freaky/compose.truenas.yaml`](docker/freaky/compose.truenas.yaml) in TrueNAS custom app YAML. Replace `/mnt/storage/appData/audiobookshelf-freaky` with your dataset path. When upgrading an existing installation, preserve its current host paths for config, metadata and media. Ensure the dataset directories are writable by the container. Open port **13378** on the TrueNAS LAN address. Persist and back up **config, metadata and media** together. New libraries should use `/podcasts` and `/audiobooks`.
 
-For migration from the Mac test instance, stop it and copy its config, metadata and podcast/audio directories into those datasets before starting TrueNAS. The additional `/app/podcasts` mapping preserves the path chosen during initial setup. Do not run two servers against the same writable SQLite configuration. The image contains no personal accounts, secrets or podcasts.
+For migration from the Mac test instance, stop it and copy its config, metadata and podcast/audio directories into those datasets before starting TrueNAS. Podcast library folders should use `/podcasts`, matching the deployment YAML. Do not run two servers against the same writable SQLite configuration. The image contains no personal accounts, secrets or podcasts.
 
 The runtime reuses the pinned official v2.37.2 image for native libraries/FFmpeg and replaces the compiled server and Web client. Build locally:
 

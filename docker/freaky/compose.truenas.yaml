@@ -12,5 +12,3 @@ services:
       - /mnt/storage/appData/audiobookshelf-freaky/metadata:/metadata
       - /mnt/storage/appData/audiobookshelf-freaky/audiobooks:/audiobooks
       - /mnt/storage/appData/audiobookshelf-freaky/podcasts:/podcasts
-      # Compatibility with the library path used by the initial Mac instance.
-      - /mnt/storage/appData/audiobookshelf-freaky/podcasts:/app/podcasts
