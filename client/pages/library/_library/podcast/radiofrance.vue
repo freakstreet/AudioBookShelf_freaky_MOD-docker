@@ -23,6 +23,7 @@
             <select id="rf-discover-station" v-model="discoverStation" :disabled="busy"><option value="">Toutes les stations</option><option v-for="station in stations" :key="station" :value="station">{{ stationName(station) }}</option></select>
             <button :disabled="busy" @click="act('discover', { station: discoverStation })"><span class="material-symbols">travel_explore</span> Actualiser le catalogue</button>
           </div>
+          <p class="rf-help">Les résultats sont conservés au fil du parcours, même après une interruption. Une nouvelle tentative traite d’abord les pages manquantes, puis actualise celles déjà récupérées.</p>
         </section>
 
         <section v-if="job" class="rf-box rf-job" role="status" aria-live="polite">
@@ -93,7 +94,7 @@ export default {
     episodeCount() { return this.shows.reduce((sum, show) => sum + (show.episodes || 0), 0) },
     filtered() {
       const search = this.search.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
-      return this.shows.filter((show) => (!this.filterStation || show.station === this.filterStation) && (!search || show.title.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().includes(search)) && (this.filterState === 'all' || (this.filterState === 'ready' && show.filename) || (this.filterState === 'linked' && show.itemId) || (this.filterState === 'pending' && !show.filename))).sort((a, b) => Number(!!b.filename) - Number(!!a.filename) || a.title.localeCompare(b.title, 'fr'))
+      return this.shows.filter((show) => (!this.filterStation || show.station === this.filterStation) && (!search || show.title.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().includes(search)) && (this.filterState === 'all' || (this.filterState === 'ready' && show.filename) || (this.filterState === 'linked' && show.itemId) || (this.filterState === 'pending' && !show.filename))).sort((a, b) => Number(!!a.filename) - Number(!!b.filename) || a.title.localeCompare(b.title, 'fr'))
     },
     allSelected() { return this.filtered.length > 0 && this.filtered.every((show) => show.ambiguous || this.selected.includes(show.url)) },
     canImport() { return this.folderId && this.selected.length && this.selected.every((url) => this.shows.some((show) => show.url === url && show.filename && !show.ambiguous)) },

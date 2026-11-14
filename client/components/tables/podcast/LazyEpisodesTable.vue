@@ -13,7 +13,7 @@
         </label>
       </div>
       <div class="grow hidden md:block" />
-      <div class="flex items-center">
+      <div class="flex items-center flex-wrap gap-y-2">
         <template v-if="isSelectionMode">
           <ui-tooltip :text="selectedIsFinished ? $strings.MessageMarkAsNotFinished : $strings.MessageMarkAsFinished" direction="bottom">
             <ui-read-icon-btn :disabled="processing" :is-read="selectedIsFinished" @click="toggleBatchFinished" class="mx-1.5" />
@@ -22,6 +22,9 @@
           <ui-btn :disabled="processing" small class="ml-2 h-9" @click="clearSelected">{{ $strings.ButtonCancel }}</ui-btn>
         </template>
         <template v-else>
+          <ui-btn v-if="userIsAdminOrUp" small class="mr-2 h-9 whitespace-nowrap" :disabled="bulkDownloading || !missingEpisodeCount" :loading="bulkDownloading" title="Télécharger toute la série, quels que soient les filtres. Les épisodes déjà téléchargés ou en file sont ignorés." @click="downloadAllEpisodes">
+            <span class="material-symbols text-base align-middle mr-1" aria-hidden="true">download</span>Télécharger tous<span v-if="missingEpisodeCount"> ({{ missingEpisodeCount }})</span>
+          </ui-btn>
           <controls-filter-select v-model="filterKey" :items="filterItems" class="w-36 h-9 md:ml-4" @change="filterSortChanged" />
           <controls-sort-select v-model="sortKey" :descending.sync="sortDesc" :items="sortItems" class="w-44 md:w-48 h-9 ml-1 sm:ml-4" @change="filterSortChanged" />
           <div class="grow md:hidden" />
@@ -75,6 +78,7 @@ export default {
       selectedEpisodes: [],
       episodesToRemove: [],
       processing: false,
+      bulkDownloading: false,
       search: null,
       searchTimeout: null,
       searchText: null,
@@ -170,6 +174,9 @@ export default {
     episodes() {
       return this.media.episodes || []
     },
+    missingEpisodeCount() {
+      return this.episodes.filter((episode) => episode.downloaded === false).length
+    },
     episodesSorted() {
       return this.episodesCopy
         .filter((ep) => !this.downloadedOnly || ep.downloaded === true)
@@ -252,6 +259,25 @@ export default {
     }
   },
   methods: {
+    async downloadAllEpisodes() {
+      if (this.bulkDownloading || !this.userIsAdminOrUp || !this.missingEpisodeCount) return
+      this.bulkDownloading = true
+      try {
+        const result = await this.$axios.$post(`/api/podcasts/${this.libraryItem.id}/download-all`, {})
+        if (this._isDestroyed) return
+        if (result.queued) this.$toast.success(`${result.queued} épisode(s) ajouté(s) à la file de téléchargement.`)
+        else if (!result.failed) this.$toast.info('Tous les épisodes sont déjà téléchargés ou en file.')
+        if (result.failed) this.$toast.error(`${result.failed} épisode(s) n’ont pas pu être ajoutés. ${result.errors?.[0]?.error || 'Réessayez.'}`)
+        try {
+          const item = await this.$axios.$get(`/api/items/${this.libraryItem.id}?expanded=1`)
+          if (!this._isDestroyed) this.$eventBus.$emit(`${this.libraryItem.id}_updated`, item)
+        } catch (_) { /* The server queue continues; socket updates refresh the page. */ }
+      } catch (error) {
+        if (!this._isDestroyed) this.$toast.error(error.response?.data?.error || 'Impossible de préparer les téléchargements. Réessayez.')
+      } finally {
+        this.bulkDownloading = false
+      }
+    },
     submit() {},
     inputUpdate() {
       clearTimeout(this.searchTimeout)

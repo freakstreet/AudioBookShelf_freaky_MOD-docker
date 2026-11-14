@@ -148,8 +148,14 @@ class RadioFranceManager {
         for (const [key, entry] of catalog.cache) {
           if (this.ownedName(entry.feedURL)) catalog.cache.set(key, { ...entry, checkedAt: 0 })
         }
+      } else if (kind === 'discover') {
+        const discovery = this.read('discovered.json', {}).discovery || {}
+        if (Date.parse(discovery.updatedAt) >= job.startedAt - 1000) this.job.report = { errors: (discovery.errors || []).slice(0, 50), unavailable: 0 }
       }
-      this.finish(cancelled ? 'cancelled' : code === 0 ? 'completed' : 'partial', cancelled ? null : code ? 'Le parcours est incomplet. Les flux déjà générés restent disponibles ; consultez le journal.' : null)
+      const partial = kind === 'discover'
+        ? 'Le recensement est incomplet. Les émissions déjà trouvées restent disponibles ; une nouvelle tentative traitera les pages manquantes en priorité.'
+        : 'Le parcours est incomplet. Les flux déjà générés restent disponibles ; les émissions incomplètes seront traitées en priorité à la prochaine tentative.'
+      this.finish(cancelled ? 'cancelled' : code === 0 ? 'completed' : 'partial', cancelled ? null : code ? partial : null)
     })
     return this.job
   }

@@ -1,7 +1,7 @@
 name: audiobookshelf-freaky
 services:
   audiobookshelf:
-    image: ghcr.io/freakstreet/audiobookshelf_freaky_mod-docker:v2.37.2-freaky.3
+    image: ghcr.io/freakstreet/audiobookshelf_freaky_mod-docker:v2.37.2-freaky.4
     restart: unless-stopped
     ports:
       - "13378:80"

@@ -10,6 +10,7 @@ function imageUrl(value) {
   if (typeof value !== 'string' || value.length > 4096) return null
   try {
     const url = new URL(value.trim())
+    if (['www.radiofrance.fr', 'radiofrance.fr'].includes(url.hostname) && /^\/pikapi\/images\/[0-9a-f-]+\/1200$/i.test(url.pathname)) url.pathname += 'x680'
     return ['http:', 'https:'].includes(url.protocol) && !url.username && !url.password ? url.href : null
   } catch (_) {
     return null
@@ -108,7 +109,7 @@ async function embed(audio, image) {
 
 async function prepareAndEmbed(download, { remote = cacheImage, local = cacheLocalImage, attach = embed } = {}) {
   const episodeUrl = imageUrl(download.rssPodcastEpisode.imageUrl)
-  const series = download.libraryItem.media.coverPath
+  const series = download.libraryItem.media.coverPath || download.libraryItem.media.imageURL
   const candidates = []
   if (episodeUrl) candidates.push({ kind: 'episode', url: episodeUrl })
   if (series) candidates.push({ kind: 'series', url: imageUrl(series), path: series })

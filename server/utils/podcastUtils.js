@@ -94,9 +94,9 @@ function extractImage(channel) {
       return null
     }
     var itunesImage = channel['itunes:image'][0]['$']
-    return itunesImage.href || null
+    return imageUrl(itunesImage.href)
   }
-  return channel.image.url[0] || null
+  return imageUrl(channel.image.url[0])
 }
 
 function extractCategories(channel) {

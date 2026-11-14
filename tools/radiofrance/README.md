@@ -24,6 +24,8 @@ python3 tools/radiofrance/radiofrance_catalog.py discover \
 
 Le fichier JSON contient les URL des émissions. On peut l’éditer pour conserver uniquement les émissions souhaitées. Un [exemple avec Bestioles et Là-bas si j’y suis](shows.example.json) est fourni. Le recensement suit les liens accessibles depuis les pages choisies : il ne garantit pas de retrouver une émission isolée et non liée au catalogue.
 
+Le JSON est sauvegardé **après chaque page**, avec les résultats des précédents recensements. Une panne, un refus Radio France ou une interruption conserve donc les émissions déjà trouvées. Relancer la même commande traite d’abord les pages manquantes ou en échec, puis les pages déjà récupérées. La progression privée est conservée dans `radiofrance-state/discovery.json`, séparément pour chaque sélection de station et de points de départ. Lors de la première reprise d’un ancien cache, les pages catalogue déjà enregistrées sont relues pour récupérer les résultats qui n’avaient pas été publiés. Une erreur réseau isolée n’empêche pas le parcours des autres pages ; un refus 403/429 interrompt toujours les requêtes.
+
 ```sh
 python3 tools/radiofrance/radiofrance_catalog.py build \
   --config radiofrance-shows.json \
@@ -77,6 +79,8 @@ Le script peut aussi être exécuté avec l’image Python officielle, en montan
 Relancer la même commande `build`. Les pages catalogue restent en cache six heures, les pages d’épisodes sept jours. `--refresh` demande une revalidation immédiate ; ETag/Last-Modified sont utilisés lorsqu’ils existent. Les requêtes sont séquentielles, espacées de 0,8 seconde par défaut (`--delay`, minimum 0,5). Un refus 403 ou une limitation 429 arrête le parcours et conserve l’état.
 
 Les flux sont écrits par remplacement atomique. Le cache permet de reprendre après interruption et conserve les épisodes déjà valides si une page ne répond plus. Une page explicitement dépourvue d’audio accessible est signalée et ne crée pas de faux lien de lecture. Le script ne contourne pas de connexion, de protection ou de restriction d’accès. Il ne peut pas récupérer un fichier supprimé par l’éditeur. Le site peut changer de structure : les erreurs de lecture seront conservées dans `report.json`.
+
+La génération republie immédiatement les épisodes en cache, puis met à jour les flux et l’OPML au fil du traitement (premier épisode, tous les 25 épisodes et après chaque émission). Les émissions incomplètes passent avant celles déjà terminées lors d’une nouvelle tentative. Le tri ne modifie ni les identifiants des épisodes ni les téléchargements existants.
 
 Validation :
 

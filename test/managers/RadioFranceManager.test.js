@@ -70,6 +70,27 @@ describe('Radio France integrated control panel', () => {
     expect(restarted.status().status).to.equal('interrupted')
     expect(restarted.status().running).to.equal(false)
   })
+  it('exposes discovered shows during a job and keeps them after failure and restart', async () => {
+    manager.loadPodcasts = async () => []
+    manager.discover(library.id, 'franceinter')
+    const discoveredURL = URL_SHOW + '-nouveau'
+    fs.writeFileSync(Path.join(root, 'discovered.json'), JSON.stringify({ shows: [discoveredURL], discovery: {
+      updatedAt: new Date().toISOString(), exhaustive: false, remainingPages: 2,
+      errors: [{ url: discoveredURL, error: 'network failed' }]
+    } }))
+    const live = await manager.view(library)
+    expect(live.job.running).to.equal(true)
+    expect(live.shows.map((entry) => entry.url)).to.include(discoveredURL)
+    child.emit('close', 1)
+    expect(manager.job.status).to.equal('partial')
+    expect(manager.job.error).to.include('émissions déjà trouvées')
+    expect(manager.job.report.errors).to.have.length(1)
+    const restarted = new RadioFranceManager({ root, loadPodcasts: async () => [] })
+    const restored = await restarted.view(library)
+    expect(restored.job.running).to.equal(false)
+    expect(restored.shows.map((entry) => entry.url)).to.include(discoveredURL)
+    expect(restored.discovery.exhaustive).to.equal(false)
+  })
   it('matches existing official RSS and legacy managed feeds; rejects ambiguous titles', () => {
     const podcast = { title: 'Changed title', feedURL: show.sourceRss, libraryItem: { id: 'same-item' } }
     const ready = manager.catalogue().shows[0]

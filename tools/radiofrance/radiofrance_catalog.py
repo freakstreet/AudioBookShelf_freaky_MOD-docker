@@ -7,10 +7,12 @@ downloads audio. Persistent state must stay outside the served output folder.
 from __future__ import annotations
 
 import argparse
+from collections import deque
 import datetime as dt
 import email.utils
 import fcntl
 import functools
+import hashlib
 from html.parser import HTMLParser
 import http.server
 import json
@@ -145,14 +147,19 @@ class Page(HTMLParser):
         series = next(iter(self.of_type('RadioSeries') or self.of_type('PodcastSeries')), {})
         title = ' '.join(''.join(self.h1).split()) or series.get('name') or self.meta.get('og:title') or self.url
         return {'url': canonical(self.url), 'title': title, 'description': series.get('abstract') or series.get('description') or self.meta.get('description', ''),
-                'image': image_url(series.get('image')) or self.meta.get('og:image', ''), 'station': parts(self.url)[0], 'sourceRss': self.rss}
+                'image': image_url(self.meta.get('og:image')) or image_url(series.get('image')), 'station': parts(self.url)[0], 'sourceRss': self.rss}
 
 
 def image_url(value):
     if isinstance(value, str):
+        parsed = urlsplit(value)
+        # Radio France's JSON-LD advertises a bare /1200 endpoint which returns
+        # 404. Its Open Graph/HTML image uses the supported 1200x680 rendition.
+        if parsed.hostname in ('www.radiofrance.fr', 'radiofrance.fr') and re.fullmatch(r'/pikapi/images/[0-9a-fA-F-]+/1200', parsed.path):
+            return urlunsplit(parsed._replace(path=parsed.path + 'x680'))
         return value
     if isinstance(value, dict):
-        return value.get('url', '')
+        return image_url(value.get('url') or value.get('contentUrl'))
     if isinstance(value, list) and value:
         return image_url(value[0])
     return ''
@@ -182,7 +189,7 @@ def episode_metadata(page):
     title = ' '.join(''.join(page.h1).split()) or node.get('name') or page.meta.get('og:title', target)
     return {'url': target, 'title': title, 'description': node.get('description') or '',
             'date': date or '', 'audio': url, 'mime': audio.get('encodingFormat') or mimetypes.guess_type(urlsplit(url).path)[0] or 'audio/mpeg',
-            'duration': duration_seconds(audio.get('duration')), 'image': image_url(node.get('image')), 'length': str(audio.get('contentSize') or '0') if str(audio.get('contentSize') or '0').isdigit() else '0'}
+            'duration': duration_seconds(audio.get('duration')), 'image': image_url(page.meta.get('og:image')) or image_url(node.get('image')), 'length': str(audio.get('contentSize') or '0') if str(audio.get('contentSize') or '0').isdigit() else '0'}
 
 
 class RateLimited(RuntimeError):
@@ -209,6 +216,7 @@ class Store:
           CREATE TABLE IF NOT EXISTS http (url TEXT PRIMARY KEY, body BLOB, checked REAL, etag TEXT, modified TEXT);
           CREATE TABLE IF NOT EXISTS shows (url TEXT PRIMARY KEY, data TEXT);
           CREATE TABLE IF NOT EXISTS episodes (show TEXT, url TEXT, data TEXT, active INTEGER, PRIMARY KEY(show,url));
+          CREATE TABLE IF NOT EXISTS show_progress (url TEXT PRIMARY KEY, completed INTEGER);
         ''')
 
     def put_show(self, show):
@@ -221,6 +229,17 @@ class Store:
     def put_episode(self, show, url, episode):
         with self.db:
             self.db.execute('INSERT OR REPLACE INTO episodes VALUES (?,?,?,?)', (show, url, json.dumps(episode, ensure_ascii=False), int(episode is not None)))
+
+    def completed(self, url):
+        row = self.db.execute('SELECT completed FROM show_progress WHERE url=?', (url,)).fetchone()
+        if row is not None:
+            return bool(row[0])
+        # Older caches did not record completion separately.
+        return self.db.execute('SELECT 1 FROM episodes WHERE show=? AND active=1 LIMIT 1', (url,)).fetchone() is not None
+
+    def set_completed(self, url, completed):
+        with self.db:
+            self.db.execute('INSERT OR REPLACE INTO show_progress VALUES (?,?)', (url, int(completed)))
 
 
 class Client:
@@ -346,7 +365,7 @@ def rss_xml(show, episodes, feed_url):
     return xml_bytes(root)
 
 
-def export(store, output, base_url, report):
+def export(store, output, base_url, report, only_show=None):
     summaries = []
     root = ET.Element('opml', {'version': '2.0'})
     head = child(root, 'head', None)
@@ -354,52 +373,147 @@ def export(store, output, base_url, report):
     child(head, 'dateModified', email.utils.format_datetime(dt.datetime.now(dt.timezone.utc)))
     body = child(root, 'body', None)
     groups = {}
-    for (raw,) in store.db.execute('SELECT data FROM shows ORDER BY url'):
+    for raw, count in store.db.execute('''SELECT shows.data, count(episodes.url) FROM shows
+            LEFT JOIN episodes ON episodes.show=shows.url AND episodes.active=1
+            GROUP BY shows.url ORDER BY shows.url'''):
         show = json.loads(raw)
-        episodes = list(store.episodes(show['url']).values())
-        if not episodes:
+        show['image'] = image_url(show.get('image'))
+        if not count:
             continue
         filename = feed_name(show)
         feed_url = base_url.rstrip('/') + '/feeds/' + filename
-        atomic_write(output / 'feeds' / filename, rss_xml(show, episodes, feed_url))
+        target = output / 'feeds' / filename
+        if only_show is None or only_show == show['url'] or not target.exists():
+            episodes = [{**episode, 'image': image_url(episode.get('image'))} for episode in store.episodes(show['url']).values()]
+            atomic_write(target, rss_xml(show, episodes, feed_url))
         if show['station'] not in groups:
             groups[show['station']] = child(body, 'outline', None, text=show['station'], title=show['station'])
         child(groups[show['station']], 'outline', None, type='rss', text=show['title'], title=show['title'], xmlUrl=feed_url, htmlUrl=show['url'])
-        summaries.append({**show, 'episodes': len(episodes), 'feed': feed_url})
+        summaries.append({**show, 'episodes': count, 'feed': feed_url})
     atomic_write(output / 'catalog.opml', xml_bytes(root))
     json_write(output / 'catalog.json', {'generatedAt': now(), 'shows': summaries})
     json_write(output / 'report.json', report)
     return summaries
 
 
-def discover(client, seeds, station, max_pages):
-    queue, seen, shows = list(seeds), set(), set()
-    while queue and (max_pages is None or len(seen) < max_pages):
-        url = queue.pop(0)
-        if url in seen: continue
-        seen.add(url)
-        print(f'Catalogue : {url}', flush=True)
-        page = client.page(url)
+def read_json(path, fallback):
+    try:
+        return json.loads(path.read_text()) if path else fallback
+    except (OSError, ValueError):
+        return fallback
+
+
+def discover(client, seeds, station, max_pages, config_out=None, state_path=None):
+    saved = read_json(state_path, {})
+    previous = read_json(config_out, {})
+    scope = hashlib.sha256(json.dumps([sorted(seeds), station]).encode()).hexdigest()
+    scopes = saved.get('scopes', {})
+    progress = scopes.get(scope, {})
+    completed = set(progress.get('completedPages', []))
+    shows = {u for value in saved.get('shows', []) + previous.get('shows', [])
+             if isinstance(value, str) and (u := canonical(value)) and is_show(u)}
+    fresh, deferred, queued, seen, failed, errors = deque(), deque(), set(), set(), [], []
+    stopped = None
+
+    def enqueue(url):
+        base = canonical(url)
+        if not base or not (is_hub(base) or url in seeds):
+            return
+        if station and parts(base)[0] not in (station, 'podcasts', 'radiofrance'):
+            return
+        number = parse_qs(urlsplit(url).query).get('p', ['1'])[0]
+        url = base + '?' + urlencode({'p': int(number)}) if number.isdigit() and int(number) > 1 else base
+        if url not in queued and url not in seen:
+            (deferred if url in completed else fresh).append(url)
+            queued.add(url)
+
+    def collect(page):
         for link in page.links:
             u = canonical(link)
-            if not u: continue
+            if not u:
+                continue
             if is_show(u):
-                if not station or parts(u)[0] == station: shows.add(u)
-            elif is_hub(u) and u not in seen and u not in queue:
-                if not station or parts(u)[0] in (station, 'podcasts', 'radiofrance'): queue.append(u)
-        if page.last_page() > 1:
-            for n in range(2, page.last_page() + 1):
-                u = canonical(url) + '?' + urlencode({'p': n})
-                if u not in seen and u not in queue: queue.append(u)
-    return {'title': 'Radio France — sélection Web', 'shows': sorted(shows), 'discovery': {'pages': len(seen), 'remainingPages': len(queue), 'exhaustive': not queue}}
+                if not station or parts(u)[0] == station:
+                    shows.add(u)
+            elif is_hub(u):
+                enqueue(u)
+        for n in range(2, page.last_page() + 1):
+            enqueue(canonical(page.url) + '?' + urlencode({'p': n}))
+
+    # Recover useful pages from versions which saved HTTP responses but never
+    # published discovered.json when a later page failed.
+    store = getattr(client, 'store', None)
+    if not progress and store:
+        for (url,) in store.db.execute('SELECT url FROM http'):
+            base = canonical(url)
+            if not base or not is_hub(base) or (station and parts(base)[0] not in (station, 'podcasts', 'radiofrance')):
+                continue
+            try:
+                body = store.db.execute('SELECT body FROM http WHERE url=?', (url,)).fetchone()[0]
+                collect(Page(zlib.decompress(body).decode('utf-8'), url))
+                completed.add(url)
+            except (ValueError, UnicodeError, zlib.error):
+                continue
+
+    # Repartition after cache recovery so every known page is deferred.
+    recovered = list(fresh) + list(deferred)
+    fresh.clear(); deferred.clear(); queued.clear()
+    for url in progress.get('pendingPages', []) + list(seeds) + recovered + sorted(completed):
+        enqueue(url)
+
+    def checkpoint():
+        remaining = list(dict.fromkeys(failed + list(fresh) + list(deferred)))
+        result = {'title': 'Radio France — sélection Web', 'shows': sorted(shows),
+                  'discovery': {'pages': len(seen), 'remainingPages': len(remaining),
+                                'exhaustive': not remaining and not stopped,
+                                'updatedAt': now(), 'errors': errors[-50:]}}
+        if stopped:
+            result['discovery']['stopped'] = stopped
+        scopes[scope] = {'completedPages': sorted(completed), 'pendingPages': remaining}
+        if state_path:
+            json_write(state_path, {'shows': sorted(shows), 'scopes': scopes})
+        if config_out:
+            json_write(config_out, result)
+        return result
+
+    checkpoint()
+    try:
+        while (fresh or deferred) and (max_pages is None or len(seen) < max_pages):
+            url = (fresh if fresh else deferred).popleft()
+            queued.remove(url)
+            seen.add(url)
+            print(f'Catalogue : {url}', flush=True)
+            try:
+                collect(client.page(url))
+                completed.add(url)
+            except (RateLimited, KeyboardInterrupt) as error:
+                failed.append(url)
+                completed.discard(url)
+                stopped = str(error) or 'Interrompu ; relancer pour reprendre.'
+                print(f'Catalogue interrompu : {stopped}', flush=True)
+                break
+            except Exception as error:
+                failed.append(url)
+                completed.discard(url)
+                errors.append({'url': url, 'error': str(error)})
+                print(f'Catalogue indisponible : {url} — {error}', flush=True)
+            finally:
+                checkpoint()
+    finally:
+        result = checkpoint()
+    return result
 
 
 def build(client, store, urls, args):
     report = {'startedAt': now(), 'shows': [], 'errors': [], 'unavailable': [], 'partial': bool(args.max_pages or args.max_episodes)}
+    urls = sorted(urls, key=store.completed)
+    # Republish cached episodes immediately, including after an unclean stop.
+    export(store, args.output, args.base_url, report, only_show='')
     try:
         for url in urls:
             summary = {'url': url, 'pages': 0, 'found': 0, 'processed': 0, 'completed': False}
             report['shows'].append(summary)
+            store.set_completed(url, False)
             try:
                 first = client.page(url, ttl=0 if getattr(args, 'refresh_index', False) else 21600)
                 if not (first.of_type('RadioSeries') or first.of_type('PodcastSeries')):
@@ -444,6 +558,8 @@ def build(client, store, urls, args):
                             report['unavailable'].append(episode_url)
                         store.put_episode(url, episode_url, episode)
                         summary['processed'] += 1
+                        if index == 1 or index % 25 == 0:
+                            export(store, args.output, args.base_url, report, only_show=url)
                     except RateLimited:
                         raise
                     except Exception as error:
@@ -453,6 +569,9 @@ def build(client, store, urls, args):
                 raise
             except Exception as error:
                 report['errors'].append({'url': url, 'error': str(error)})
+            finally:
+                store.set_completed(url, summary['completed'])
+                export(store, args.output, args.base_url, report, only_show=url)
     except (RateLimited, KeyboardInterrupt) as error:
         report['stopped'] = str(error) or 'Interrompu ; relancer pour reprendre.'
     finally:
@@ -529,10 +648,9 @@ def main(argv=None):
                 seeds = args.seed or [ORIGIN + (f'/{args.station}/podcasts' if args.station else '/podcasts')]
                 for seed in seeds:
                     if not canonical(seed): parser.error('Point de départ hors radiofrance.fr.')
-                config = discover(client, seeds, args.station, args.max_discovery_pages)
-                json_write(args.config_out, config)
+                config = discover(client, seeds, args.station, args.max_discovery_pages, args.config_out, args.state / 'discovery.json')
                 print(f'{len(config["shows"])} émissions recensées ; configuration : {args.config_out}', flush=True)
-                return 0
+                return int(bool(config['discovery'].get('errors') or config['discovery'].get('stopped')))
             urls = list(args.show)
             if args.config:
                 urls.extend(json.loads(args.config.read_text())['shows'])

@@ -27,7 +27,7 @@ RUN npm run generate
 FROM ${ABS_BASE} AS runtime
 RUN apk add --no-cache python3
 COPY tools/radiofrance/radiofrance_catalog.py /app/dist-server/tools/radiofrance/radiofrance_catalog.py
-ARG MOD_VERSION=2.37.2-freaky.3
+ARG MOD_VERSION=2.37.2-freaky.4
 LABEL org.opencontainers.image.source="https://github.com/freakstreet/AudioBookShelf_freaky_MOD-docker" \
       org.opencontainers.image.version="${MOD_VERSION}" \
       org.opencontainers.image.licenses="GPL-3.0" \

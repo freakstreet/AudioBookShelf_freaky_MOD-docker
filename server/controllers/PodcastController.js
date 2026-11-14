@@ -504,6 +504,16 @@ class PodcastController {
     }
   }
 
+  async downloadAllEpisodes(req, res) {
+    if (!req.user.isAdminOrUp) return res.sendStatus(403)
+    try {
+      const result = await PodcastCatalog.requestAllDownloads(req.libraryItem, this.podcastManager)
+      res.status(result.queued ? 202 : 200).json(result)
+    } catch (error) {
+      res.status(error.status || 502).json({ error: error.message || 'Impossible de préparer les téléchargements.' })
+    }
+  }
+
   /**
    * DELETE: /api/podcasts/:id/episode/:episodeId
    *

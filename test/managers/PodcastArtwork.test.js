@@ -13,6 +13,15 @@ describe('Podcast episode artwork', () => {
     for (const url of ['javascript:alert(1)', 'file:///etc/passwd', 'data:image/png;base64,foo', 'https://user:secret@example.org/image.jpg', null, {}]) expect(imageUrl(url)).to.equal(null)
     expect(imageUrl(' https://example.org/image.jpg ')).to.equal('https://example.org/image.jpg')
   })
+  it('repairs Radio France bare-width image URLs and leaves other renditions unchanged', async () => {
+    const broken = 'https://www.radiofrance.fr/pikapi/images/e6db8a26-67d2-4f81-b318-8f62579d7ad8/1200'
+    expect(imageUrl(broken)).to.equal(broken + 'x680')
+    expect(imageUrl(broken + 'x680')).to.equal(broken + 'x680')
+    expect(imageUrl('https://example.org/pikapi/images/abc/1200')).to.equal('https://example.org/pikapi/images/abc/1200')
+    const { podcast } = await parsePodcastRssFeedXml(`<rss version="2.0" xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd"><channel><title>Series</title><itunes:image href="${broken}"/><item><title>Episode</title><guid>ep</guid><itunes:image href="${broken}"/><enclosure url="https://example.org/audio.mp3"/></item></channel></rss>`)
+    expect(podcast.metadata.image).to.equal(broken + 'x680')
+    expect(podcast.episodes[0].imageUrl).to.equal(broken + 'x680')
+  })
   it('only serves JPEG files inside the dedicated artwork cache', () => {
     const old = global.MetadataPath
     global.MetadataPath = '/metadata'
