@@ -31,6 +31,83 @@ def episode_node():
 
 
 class CatalogTests(unittest.TestCase):
+    def test_discovery_reads_a_5156_page_episode_bouquet_only_once(self):
+        bouquet = c.ORIGIN + '/radiofrance/podcasts/bouquet-vous-avez-moins-de-5-minutes'
+        hidden = c.ORIGIN + '/franceculture/podcasts/emission-trouvee'
+        pages = {
+            c.ORIGIN + '/podcasts': page([], f'<a href="{bouquet}">Sélection</a>', c.ORIGIN + '/podcasts'),
+            bouquet: page([{'@type': 'ItemList', 'itemListElement': [{'url': hidden + '/episode-1234567'}]}], '<script>pagination:{lastPage:5156}</script>', bouquet)
+        }
+        class Client:
+            def __init__(self): self.calls = []
+            def page(self, url): self.calls.append(url); return pages[url]
+        client = Client()
+        with contextlib.redirect_stdout(io.StringIO()): result = c.discover(client, [c.ORIGIN + '/podcasts'], None, None)
+        self.assertEqual(client.calls, [c.ORIGIN + '/podcasts', bouquet])
+        self.assertEqual(result['shows'], [hidden])
+        self.assertTrue(result['discovery']['exhaustive'])
+        self.assertEqual(result['discovery']['skippedArchivePages'], 5155)
+
+    def test_discovery_removes_archive_pages_from_an_old_pending_checkpoint(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory); state = root/'discovery.json'; config = root/'discovered.json'
+            scope = c.hashlib.sha256(json.dumps([[HUB], 'franceinter']).encode()).hexdigest()
+            c.json_write(state, {'shows': [SHOW], 'scopes': {scope: {
+                'completedPages': [HUB, HUB_A + '?p=5155'],
+                'pendingPages': [HUB_A + '?p=' + str(n) for n in range(5156, 6156)]
+            }}})
+            class Client:
+                def __init__(self): self.calls = []
+                def page(self, url):
+                    self.calls.append(url)
+                    return page([], f'<a href="{SHOW_B}/episode-12345">Épisode</a><script>pagination:{{lastPage:9999}}</script>', url)
+            client = Client()
+            with contextlib.redirect_stdout(io.StringIO()): result = c.discover(client, [HUB], 'franceinter', None, config, state)
+            self.assertEqual(len(client.calls), 2)
+            self.assertTrue(all('?' not in u for u in client.calls))
+            self.assertCountEqual(result['shows'], [SHOW, SHOW_B])
+            self.assertEqual(result['discovery']['remainingPages'], 0)
+            self.assertEqual(json.loads(state.read_text())['scopes'][scope]['pendingPages'], [])
+
+    def test_discovery_preserves_pagination_of_genuine_show_indexes_and_resumes_missing_pages(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory); config = root/'discovered.json'; state = root/'discovery.json'
+            class Client:
+                def __init__(self): self.calls = []
+                def page(self, url):
+                    self.calls.append(url)
+                    n = c.parse_qs(c.urlsplit(url).query).get('p', ['1'])[0]
+                    return page([{'@type': 'ItemList', 'itemListElement': [{'url': HUB + '/emission-' + n}]}], '<script>pagination:{lastPage:3}</script>', url)
+            first = Client()
+            with contextlib.redirect_stdout(io.StringIO()): result = c.discover(first, [HUB], 'franceinter', 1, config, state)
+            self.assertFalse(result['discovery']['exhaustive'])
+            resumed = Client()
+            with contextlib.redirect_stdout(io.StringIO()): result = c.discover(resumed, [HUB], 'franceinter', None, config, state)
+            self.assertEqual(resumed.calls, [HUB + '?p=2', HUB + '?p=3', HUB])
+            self.assertEqual(len(result['shows']), 3)
+            self.assertTrue(result['discovery']['exhaustive'])
+
+    def test_generation_still_reads_every_page_of_a_selected_episode_archive(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory); store = c.Store(root/'cache.sqlite')
+            class Client:
+                requests = cache_hits = 0
+                def __init__(self): self.calls = []
+                def page(self, url, **kwargs):
+                    self.calls.append(url)
+                    if c.canonical(url) == SHOW:
+                        n = c.parse_qs(c.urlsplit(url).query).get('p', ['1'])[0]
+                        return page([{'@type': 'RadioSeries', 'name': 'Archive complète'}, {'@type': 'ItemList', 'itemListElement': [{'url': SHOW + '/episode-' + n}]}], '<script>pagination:{lastPage:3}</script>', url)
+                    return page([{**episode_node(), 'url': url}], url=url)
+            args = SimpleNamespace(output=root/'public', base_url='http://example.local', max_pages=None, max_episodes=None)
+            client = Client()
+            with contextlib.redirect_stdout(io.StringIO()): code = c.build(client, store, [SHOW], args)
+            self.assertEqual(code, 0)
+            self.assertEqual(client.calls[:3], [SHOW, SHOW + '?p=2', SHOW + '?p=3'])
+            self.assertEqual(len(store.episodes(SHOW)), 3)
+            self.assertEqual(len(ET.parse(next((root/'public/feeds').glob('*.xml'))).findall('./channel/item')), 3)
+            store.db.close()
+
     def test_discovery_keeps_live_results_on_rate_limit_and_retries_missing_pages_first(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory); config = root/'discovered.json'; state = root/'state'/'discovery.json'

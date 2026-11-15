@@ -45,6 +45,8 @@ python3 tools/radiofrance/radiofrance_catalog.py build \
 
 Les options `--max-discovery-pages`, `--max-pages` et `--max-episodes` permettent un **essai partiel**. Sans ces options, toutes les pages annoncées par chaque émission sont parcourues. Le rapport indique les parcours incomplets ; aucune ancienne entrée n’est supprimée simplement à cause d’une limite d’essai ou d’une erreur réseau.
 
+Le recensement parcourt les index d’émissions et la première page des sélections thématiques. Il ne traverse plus leurs milliers de pages d’épisodes : les émissions sont reconnues aussi à partir des liens d’épisodes. Seuls les index structurés en émissions sont paginés. Les anciennes files d’attente sont automatiquement réduites aux pages utiles, sans supprimer les émissions déjà trouvées. Cette optimisation ne limite pas les archives récupérées par `build` pour chaque émission choisie.
+
 ## Fichiers produits
 
 - `radiofrance-public/feeds/*.xml` : un RSS 2.0 par émission, contenant les liens audio réellement exposés par ses pages.

@@ -62,6 +62,17 @@ def is_hub(url):
     return (p[0] == 'podcasts' and len(p) <= 2) or (p[0] in STATIONS and len(p) >= 2 and p[1] == 'podcasts' and (len(p) == 2 or (len(p) == 3 and p[2].startswith(('bouquet-', 'selection-')))))
 
 
+def is_selection(url):
+    p = parts(url)
+    return len(p) == 3 and p[2].startswith(('bouquet-', 'selection-'))
+
+
+def episode_show(url):
+    p = parts(url)
+    parent = '/'.join(url.split('/')[:-1])
+    return parent if len(p) == 4 and is_show(parent) else None
+
+
 def walk(value):
     if isinstance(value, dict):
         yield value
@@ -120,16 +131,25 @@ class Page(HTMLParser):
     def of_type(self, kind):
         return [node for node in self.nodes if has_type(node, kind)]
 
-    def episode_links(self):
+    def listing_urls(self):
         # Only the main structured ItemList, never recommendations in HTML.
         urls = []
         for node in self.of_type('ItemList'):
             for entry in node.get('itemListElement', []):
                 candidate = entry.get('url') or entry.get('item', {}).get('url')
                 u = canonical(candidate, self.url) if candidate else None
-                if u and len(parts(u)) == 4 and parts(u)[1] == 'podcasts':
+                if u:
                     urls.append(u)
         return list(dict.fromkeys(urls))
+
+    def episode_links(self):
+        return [u for u in self.listing_urls() if episode_show(u)]
+
+    def paginates_shows(self):
+        # Episode archives (notably the 5,000+ page thematic bouquets) do not
+        # enumerate series. Only paginate a listing explicitly made of shows.
+        urls = self.listing_urls()
+        return not is_selection(self.url) and any(is_show(u) for u in urls) and not any(episode_show(u) for u in urls)
 
     def last_page(self):
         pages = [1]
@@ -409,36 +429,60 @@ def discover(client, seeds, station, max_pages, config_out=None, state_path=None
     scope = hashlib.sha256(json.dumps([sorted(seeds), station]).encode()).hexdigest()
     scopes = saved.get('scopes', {})
     progress = scopes.get(scope, {})
-    completed = set(progress.get('completedPages', []))
+    paginated = {u for u in progress.get('paginatedCatalogues', []) if canonical(u) == u and is_hub(u) and not is_selection(u)}
+    skipped = {}
+
+    def useful_url(url):
+        base = canonical(url)
+        if not base or not (is_hub(base) or url in seeds):
+            return None
+        if station and parts(base)[0] not in (station, 'podcasts', 'radiofrance'):
+            return None
+        number = parse_qs(urlsplit(url).query).get('p', ['1'])[0]
+        # Old checkpoints can contain tens of thousands of archive pages.
+        # Collapse them to the first page unless this is a genuine show index.
+        return base + '?' + urlencode({'p': int(number)}) if base in paginated and number.isdigit() and int(number) > 1 else base
+
+    completed = {u for value in progress.get('completedPages', []) if (u := useful_url(value))}
     shows = {u for value in saved.get('shows', []) + previous.get('shows', [])
              if isinstance(value, str) and (u := canonical(value)) and is_show(u)}
     fresh, deferred, queued, seen, failed, errors = deque(), deque(), set(), set(), [], []
     stopped = None
 
     def enqueue(url):
-        base = canonical(url)
-        if not base or not (is_hub(base) or url in seeds):
-            return
-        if station and parts(base)[0] not in (station, 'podcasts', 'radiofrance'):
-            return
-        number = parse_qs(urlsplit(url).query).get('p', ['1'])[0]
-        url = base + '?' + urlencode({'p': int(number)}) if number.isdigit() and int(number) > 1 else base
-        if url not in queued and url not in seen:
+        url = useful_url(url)
+        if url and url not in queued and url not in seen:
             (deferred if url in completed else fresh).append(url)
             queued.add(url)
 
     def collect(page):
-        for link in page.links:
+        for link in dict.fromkeys(page.links + page.listing_urls()):
             u = canonical(link)
             if not u:
                 continue
             if is_show(u):
                 if not station or parts(u)[0] == station:
                     shows.add(u)
+            elif episode_show(u):
+                parent = episode_show(u)
+                if not station or parts(parent)[0] == station:
+                    shows.add(parent)
             elif is_hub(u):
                 enqueue(u)
-        for n in range(2, page.last_page() + 1):
-            enqueue(canonical(page.url) + '?' + urlencode({'p': n}))
+        base = canonical(page.url)
+        if page.paginates_shows():
+            paginated.add(base)
+            for n in range(2, page.last_page() + 1):
+                enqueue(base + '?' + urlencode({'p': n}))
+        elif page.url == base or parse_qs(urlsplit(page.url).query).get('p', ['1'])[0] == '1':
+            skipped[base] = max(skipped.get(base, 0), page.last_page() - 1)
+            paginated.discard(base)
+            for group in (fresh, deferred):
+                obsolete = {u for u in group if canonical(u) == base and u != base}
+                group_copy = [u for u in group if u not in obsolete]
+                group.clear(); group.extend(group_copy)
+                queued.difference_update(obsolete)
+            completed.difference_update({u for u in completed if canonical(u) == base and u != base})
 
     # Recover useful pages from versions which saved HTTP responses but never
     # published discovered.json when a later page failed.
@@ -447,6 +491,8 @@ def discover(client, seeds, station, max_pages, config_out=None, state_path=None
         for (url,) in store.db.execute('SELECT url FROM http'):
             base = canonical(url)
             if not base or not is_hub(base) or (station and parts(base)[0] not in (station, 'podcasts', 'radiofrance')):
+                continue
+            if url != base and base not in paginated:
                 continue
             try:
                 body = store.db.execute('SELECT body FROM http WHERE url=?', (url,)).fetchone()[0]
@@ -466,10 +512,11 @@ def discover(client, seeds, station, max_pages, config_out=None, state_path=None
         result = {'title': 'Radio France — sélection Web', 'shows': sorted(shows),
                   'discovery': {'pages': len(seen), 'remainingPages': len(remaining),
                                 'exhaustive': not remaining and not stopped,
+                                'strategy': 'series-indexes', 'skippedArchivePages': sum(skipped.values()),
                                 'updatedAt': now(), 'errors': errors[-50:]}}
         if stopped:
             result['discovery']['stopped'] = stopped
-        scopes[scope] = {'completedPages': sorted(completed), 'pendingPages': remaining}
+        scopes[scope] = {'completedPages': sorted(completed), 'pendingPages': remaining, 'paginatedCatalogues': sorted(paginated)}
         if state_path:
             json_write(state_path, {'shows': sorted(shows), 'scopes': scopes})
         if config_out:

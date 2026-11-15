@@ -33,6 +33,8 @@ Manual refresh revalidates show index pages while retaining the episode-page cac
 
 Catalogue discovery saves its results after every page, so an interruption or failed page never discards earlier discoveries or stations. Retry processes missing/failed pages before revalidating previously successful pages, with an independent checkpoint for each station/seed selection. Existing HTTP caches from earlier versions are recovered when no checkpoint exists yet. Generated feeds and OPML become available progressively; generation retries prioritize incomplete shows over completed shows. The panel lists shows still awaiting generation before ready feeds. All checkpoints remain under `/metadata/radiofrance/`; no extra volume is required.
 
+Discovery follows series indexes and only the first page of thematic selections, deriving parent shows from episode links. It does not crawl their thousands of episode archive pages. Only structured series listings retain pagination. Old pending archive queues are collapsed automatically while retaining previous discoveries; generating selected shows still traverses their complete episode archives. The panel reports how many archive pages were avoided.
+
 Management API (administrator + library access): `GET /api/libraries/:id/radiofrance`; `POST /api/libraries/:id/radiofrance/{discover,generate,import,cancel}`. Generate/import accept selected show `urls`; import also requires a `folderId` from that library. Jobs return 202 and are polled through the GET endpoint. A single server-wide job prevents simultaneous writes to the catalogue.
 
 ## Radio France Web catalogue generator
@@ -57,7 +59,7 @@ Local ORM audio rows remain distinct from RSS catalogue metadata, so scanning an
 
 ## Docker / TrueNAS SCALE
 
-Image: `ghcr.io/freakstreet/audiobookshelf_freaky_mod-docker:v2.37.2-freaky.4` (Linux amd64, suitable for x86 TrueNAS).
+Image: `ghcr.io/freakstreet/audiobookshelf_freaky_mod-docker:v2.37.2-freaky.5` (Linux amd64, suitable for x86 TrueNAS).
 
 Import [`docker/freaky/compose.truenas.yaml`](docker/freaky/compose.truenas.yaml) in TrueNAS custom app YAML. Replace `/mnt/storage/appData/audiobookshelf-freaky` with your dataset path. When upgrading an existing installation, preserve its current host paths for config, metadata and media. Ensure the dataset directories are writable by the container. Open port **13378** on the TrueNAS LAN address. Persist and back up **config, metadata and media** together. New libraries should use `/podcasts` and `/audiobooks`.
 
@@ -68,7 +70,7 @@ The runtime reuses the pinned official v2.37.2 image for native libraries/FFmpeg
 ```sh
 docker build -f Dockerfile.freaky --target test -t abs-freaky-tests .
 docker build -f Dockerfile.freaky --target artwork-test -t abs-artwork-tests .
-docker build -f Dockerfile.freaky -t audiobookshelf-freaky:2.37.2-freaky.4 .
+docker build -f Dockerfile.freaky -t audiobookshelf-freaky:2.37.2-freaky.5 .
 ```
 
 The fork's workflow builds/tests each main push and publishes tagged releases to GHCR. Upstream-specific workflows are retained in `.github/upstream-workflows` without running against this fork.

@@ -69,6 +69,7 @@
           </div>
           <p v-if="shows.length && !filtered.length" class="rf-empty">Aucune émission ne correspond à ces filtres.</p>
           <p v-if="discovery && !discovery.exhaustive" class="rf-help">Le dernier recensement est partiel. Relancez « Actualiser le catalogue » pour compléter la recherche.</p>
+          <p v-if="discovery && discovery.skippedArchivePages" class="rf-help">{{ discovery.skippedArchivePages.toLocaleString('fr-FR') }} pages d’archives évitées pendant le recensement. Les épisodes sont récupérés lors de la génération du flux de chaque émission choisie.</p>
         </section>
       </div>
     </div>
